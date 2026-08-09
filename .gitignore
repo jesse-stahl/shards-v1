@@ -1,0 +1,15 @@
+/.forge-snapshots/
+/.idea/
+/.vscode/
+/broadcast/
+/cache/
+/lib/
+/lcov.info
+/out/
+
+.DS_Store
+.env
+.env.*
+*.key
+*.pem
+*.swp
