@@ -4,8 +4,8 @@
   "internalContractRelease": "shards-v1",
   "status": "not-deployed",
   "chainId": 1,
-  "releaseCommit": null,
-  "sourceCommitment": null,
+  "releaseCommit": "5a8ce6e05db8e3249dce637f0a03201c2d1677ea",
+  "sourceCommitment": "3429317d8f2d9657efb5f293a54540e97a37f0ae",
   "startingNonce": null,
   "hookSalt": null,
   "releaseScope": {
@@ -142,5 +142,6 @@
   "lifecycleEvidence": {
     "status": "not-run",
     "releaseEligible": false
-  }
+  },
+  "releaseBinding": "releaseCommit is the git commit whose build every artifact size, hash and predicted address below was regenerated from. sourceCommitment is the git tree of src/ at that commit, so it identifies the reviewed contract bytes independently of documentation or manifest edits. A manifest cannot contain its own commit hash, so this binding is added in the commit that immediately follows the one it names; src/ is byte-identical across the two, which sourceCommitment is what proves."
 }
