@@ -389,7 +389,10 @@ contract ShardFeeDistributorV1Test is Test {
         // Same block: release and re-acquire token 1, then a fee lands and is settled
         // while token 1 is pending again.
         d.release(1, alice);
-        uint256 discardedScaled = d.accFeePerNFT() - _effSnap(1);
+        // The fraction the release could not pay out is CARRIED, not dropped: acquisition resets the
+        // snapshot, so anything still owed to the piece has to be swept before that happens.
+        uint256 carriedScaled = d.accFeePerNFT() - _effSnap(1);
+        assertEq(d.releasedDustScaled(), carriedScaled, "release did not carry its sub-wei remainder");
         d.acquire(1, alice);
         d.distribute(a4);
         total += a4;
@@ -411,7 +414,7 @@ contract ShardFeeDistributorV1Test is Test {
 
         assertEq(d.circulating(), 3, "all three earning");
         assertEq(
-            _paid() * ACC + unsettledScaled + discardedScaled + d.dustScaled() + d.escrowBalance() * ACC,
+            _paid() * ACC + unsettledScaled + d.dustScaled() + d.releasedDustScaled() + d.escrowBalance() * ACC,
             total * ACC,
             "no wei created or destroyed"
         );

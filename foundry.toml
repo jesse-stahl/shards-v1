@@ -13,6 +13,7 @@ cbor_metadata = false
 ffi = false
 fs_permissions = [
   { access = "read", path = "./spec" },
+  { access = "read", path = "./releases" },
   { access = "read", path = "./out" }
 ]
 

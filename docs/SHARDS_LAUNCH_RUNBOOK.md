@@ -13,7 +13,7 @@ Shards remains in `design` status. None of the commands below authorizes a produ
 - builder (0.10%) recipient: `0xceeBB3A6543CeBEB2ED66963897A0abEA52A50cC` — a compile-time constant in `ShardLaunchFactoryV1`, not a constructor argument, rotatable after launch via `ShardFeeDistributorV1.setBuilderFeeRecipient`
 - factory salt: `0x655a4b5a2b704bef84b4ff94adde0a7ac40ad0366c82ddca5290180fe4c3986d` (`keccak256("programmable.shards-v1.factory.v1")`)
 - raw token salt: `0xca9944c923e24ba5cb3188a29b18c3305158e686e39473e91bbe31fc019816ab` (`keccak256("programmable.shards-v1.token.v1")`)
-- hook creation-code hash: `0x34df1ce932b3ca8eebc45eff8116378cbcd5a4a285fd2bf0c28bd78a350d8a2f`
+- hook creation-code hash: `0x3fbdbc069ee5bfcb1ded77a8d4e550f1bb0692a488b6eb5d23dac090fbca0716`
 - tick spacing: `60`
 - production tick lower: `-887220`
 - production tick band: `22980`
@@ -128,18 +128,18 @@ A second launch with the same raw token salt, metadata, renderer, and hook salt 
 The predicted plan was generated deterministically from the reviewed source: the factory address was computed as `CREATE2(0x4e59…4956C, factorySalt, keccak256(initcode))`, the factory was deployed at that address through a CREATE2 deployer to run its constructor (which deploys the shared renderer), and the hook salt was mined against it. Pinned outputs (all recorded in `candidatePlan`):
 
 ```text
-expected factory:            0x22016994A1dC68744Ba0992D55E4983641De25F8
-expected renderer:           0x79C252162F9339995c2910A8B95CF91F2CdDD63C
+expected factory:            0x9442a520e7b31D10177C75A363355C2C29141ac5
+expected renderer:           0x090DBD2FaB1a467f90ed82a443eFa9AAb658DE14
 launcher fee recipient:      0x4957f49620AFf3Adbbe8195a4f633E49cc93376c
 builder fee recipient:       0xceeBB3A6543CeBEB2ED66963897A0abEA52A50cC
-hook creation-code hash:     0x34df1ce932b3ca8eebc45eff8116378cbcd5a4a285fd2bf0c28bd78a350d8a2f
+hook creation-code hash:     0x3fbdbc069ee5bfcb1ded77a8d4e550f1bb0692a488b6eb5d23dac090fbca0716
 raw token salt:              0xca9944c923e24ba5cb3188a29b18c3305158e686e39473e91bbe31fc019816ab
-effective token salt:        0x78cffd54c9c57b49ab7bd4968ed0183010c4ee9916087316498a5e6cdccc6f40
-hook salt:                   0x0000000000000000000000000000000000000000000000000000000000001430
-predicted SHARD:             0x551499e95113f140425fc360c3Cb5b97E5CA4F67
-predicted hook:              0xA30c62f8125F49Dee9da1e9dbdf9E9D82f63a0CC
-predicted NFT:               0x73A2Eb5FD84c9c5b11EF76EBC564340D3c440372
-expected configuration hash: 0xb909c3e41a965e6d207f7eaeea5ad0e85427db4365506eb719ff76df0b9df9bd
+effective token salt:        0x2fb771368a131f3ebf686980b44c57230bf257f4b82e95a10ef46d9b2bd7db37
+hook salt:                   0x00000000000000000000000000000000000000000000000000000000000052e1
+predicted SHARD:             0x50d17EAaeB52c66E64b918385AbF6523fDAE57CF
+predicted hook:              0xbA318baA8649962fD77CC7082d098f2C09Fd60cC
+predicted NFT:               0x9fDA98dE1B7061ae02A9Aec7A6f8ed75a8Feb8F3
+expected configuration hash: 0xa98b7b95777267181a2b93a33632991e80a49f4a57d94150f8dfbd90421f34c1
 ```
 
 The launch metadata is part of what these addresses commit to, so it is pinned here too. Changing any
@@ -159,7 +159,7 @@ The pinned Mainnet-fork suite reproduces the full lifecycle against the canonica
 
 ```text
 ETHEREUM_RPC_URL=https://eth.drpc.org forge test --match-contract ShardV1MainnetForkTest -vv
-  4 passed; factory deployment gas 7,633,571; atomic launch gas 8,558,658; block 25639000
+  4 passed; factory deployment gas 7,633,695; atomic launch gas 8,580,673; block 25639000
 ```
 
 The factory unit suite separately covers deterministic re-mining, failure after each deployment stage with full rollback, and a duplicate launch reverting `AddressOccupied` without changing the first launch.

@@ -38,6 +38,13 @@ abstract contract ShardFeeDistributorV1 is IShardHookV1 {
 
     uint256 public accFeePerNFT; // scaled by ACC_PRECISION
     uint256 public dustScaled; // scaled remainder, < circulating
+
+    /// @dev Sub-wei fractions swept off pieces released back to the archive. Acquisition resets a
+    ///      piece's snapshot, so a fraction left on it at release has no future settlement to be paid
+    ///      by and would otherwise sit in the contract owed to nobody. It is held here, separately
+    ///      from {dustScaled} so that value's `< circulating` bound survives, and folded into the
+    ///      next distribution.
+    uint256 public releasedDustScaled;
     uint256 public escrowBalance; // fees accrued while nothing circulated
     uint256 public circulating; // the EARNING set (lags acquisitions by a block)
     uint256 public pendingCount;
@@ -131,9 +138,11 @@ abstract contract ShardFeeDistributorV1 is IShardHookV1 {
             emit EscrowReleased(escrowBalance);
             escrowBalance = 0;
         }
-        if (total == 0 && dustScaled == 0) return;
+        uint256 released = releasedDustScaled;
+        if (total == 0 && dustScaled == 0 && released == 0) return;
+        if (released != 0) releasedDustScaled = 0;
 
-        uint256 totalScaled = total * ACC_PRECISION + dustScaled;
+        uint256 totalScaled = total * ACC_PRECISION + dustScaled + released;
         accFeePerNFT += totalScaled / circulating;
         dustScaled = totalScaled % circulating;
 
@@ -155,14 +164,21 @@ abstract contract ShardFeeDistributorV1 is IShardHookV1 {
             feeSnapshot[tokenId] = accFeePerNFT;
             pendingCount -= 1; // decrement pending, NOT circulating
         } else {
-            _settle(tokenId, from);
+            // Sweep the unpaid sub-wei fraction into the global carry. Acquisition resets the
+            // snapshot, so anything left on the piece here would otherwise be stranded in the
+            // contract, undistributed and owed to nobody.
+            releasedDustScaled += _settle(tokenId, from);
             _flushPending();
             circulating -= 1;
         }
     }
 
-    function _settle(uint256 tokenId, address owner) internal {
-        if (_isPending(tokenId)) return; // Path 3
+    /// @return remainderScaled The sub-wei fraction this settlement could not pay out, left on the
+    ///         piece's snapshot. A piece that stays in circulation keeps it and is paid once it grows
+    ///         past a wei; a piece released to the archive has no future settlement, so
+    ///         {_releaseAccounting} sweeps this into {dustScaled} instead of dropping it.
+    function _settle(uint256 tokenId, address owner) internal returns (uint256 remainderScaled) {
+        if (_isPending(tokenId)) return 0; // Path 3
         uint256 acc = accFeePerNFT;
         uint256 snap = feeSnapshot[tokenId];
         uint256 floor_ = flushAcc[acquiredBlock[tokenId]];
@@ -171,7 +187,8 @@ abstract contract ShardFeeDistributorV1 is IShardHookV1 {
             uint256 delta = acc - snap;
             uint256 owed = delta / ACC_PRECISION;
             if (owed != 0) claimable[owner] += owed;
-            feeSnapshot[tokenId] = acc - (delta % ACC_PRECISION); // keep the fraction
+            remainderScaled = delta % ACC_PRECISION;
+            feeSnapshot[tokenId] = acc - remainderScaled; // keep the fraction
         }
     }
 

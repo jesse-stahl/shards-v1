@@ -32,18 +32,18 @@
     "factorySalt": "0x655a4b5a2b704bef84b4ff94adde0a7ac40ad0366c82ddca5290180fe4c3986d",
     "factoryDeployerNonce": null,
     "nonceNote": "The factory is deployed through the canonical CREATE2 proxy, so its address depends only on the proxy, factorySalt and init-code \u2014 never on the deployer nonce.",
-    "expectedFactory": "0x22016994A1dC68744Ba0992D55E4983641De25F8",
-    "expectedRenderer": "0x79C252162F9339995c2910A8B95CF91F2CdDD63C",
+    "expectedFactory": "0x9442a520e7b31D10177C75A363355C2C29141ac5",
+    "expectedRenderer": "0x090DBD2FaB1a467f90ed82a443eFa9AAb658DE14",
     "launcherFeeRecipient": "0x4957f49620AFf3Adbbe8195a4f633E49cc93376c",
     "builderFeeRecipient": "0xceeBB3A6543CeBEB2ED66963897A0abEA52A50cC",
     "rawTokenSalt": "0xca9944c923e24ba5cb3188a29b18c3305158e686e39473e91bbe31fc019816ab",
-    "effectiveTokenSalt": "0x78cffd54c9c57b49ab7bd4968ed0183010c4ee9916087316498a5e6cdccc6f40",
-    "hookSalt": "0x0000000000000000000000000000000000000000000000000000000000001430",
-    "predictedShard": "0x551499e95113f140425fc360c3Cb5b97E5CA4F67",
-    "predictedHook": "0xA30c62f8125F49Dee9da1e9dbdf9E9D82f63a0CC",
-    "predictedNft": "0x73A2Eb5FD84c9c5b11EF76EBC564340D3c440372",
-    "expectedConfigurationHash": "0xb909c3e41a965e6d207f7eaeea5ad0e85427db4365506eb719ff76df0b9df9bd",
-    "hookCreationCodeHash": "0x34df1ce932b3ca8eebc45eff8116378cbcd5a4a285fd2bf0c28bd78a350d8a2f",
+    "effectiveTokenSalt": "0x2fb771368a131f3ebf686980b44c57230bf257f4b82e95a10ef46d9b2bd7db37",
+    "hookSalt": "0x00000000000000000000000000000000000000000000000000000000000052e1",
+    "predictedShard": "0x50d17EAaeB52c66E64b918385AbF6523fDAE57CF",
+    "predictedHook": "0xbA318baA8649962fD77CC7082d098f2C09Fd60cC",
+    "predictedNft": "0x9fDA98dE1B7061ae02A9Aec7A6f8ed75a8Feb8F3",
+    "expectedConfigurationHash": "0xa98b7b95777267181a2b93a33632991e80a49f4a57d94150f8dfbd90421f34c1",
+    "hookCreationCodeHash": "0x3fbdbc069ee5bfcb1ded77a8d4e550f1bb0692a488b6eb5d23dac090fbca0716",
     "transactionOrder": [
       "Deploy ShardLaunchFactoryV1 through the CREATE2 proxy with factorySalt",
       "Call factory.launch(rawTokenSalt, hookSalt, hookCreationCode, params)"
@@ -55,8 +55,8 @@
       "The factory holds zero SHARD after launch and both liquidity positions are non-removable",
       "factory.configurationHashOf(hook) reproduces expectedConfigurationHash"
     ],
-    "forkFactoryDeploymentGas": 7633571,
-    "forkLaunchGas": 8558658,
+    "forkFactoryDeploymentGas": 7633695,
+    "forkLaunchGas": 8580673,
     "tokenName": "Shard",
     "tokenSymbol": "SHARD",
     "nftName": "Shards",
@@ -87,11 +87,11 @@
   },
   "artifactCode": {
     "factory": {
-      "runtimeBytes": 18455,
-      "creationCodeBytes": 35617,
-      "deploymentInitcodeBytes": 35681,
-      "runtimeCodeHash": "0xd0038fe238c3aefd72f37d53b40285bcc3c9a32014035229f20eb04d7e174558",
-      "creationCodeHash": "0x45ce4abf67e05763136b40ebbc2f87bdb3f695e6e0b383d42a55289c001b2621",
+      "runtimeBytes": 20730,
+      "creationCodeBytes": 37878,
+      "deploymentInitcodeBytes": 37942,
+      "runtimeCodeHash": "0x5875d3528e57eb0a97807aa896a2e2385ebbaed0e21253255d6c79e91aabea50",
+      "creationCodeHash": "0xc6b8a2cd51ccf198c4e6e41f668c4e4f558f81de0e677ef27373c614bf4c02f8",
       "note": "Runtime artifact is unpatched; deployment initcode adds 64 bytes of constructor arguments (poolManager, hookCreationCodeHash). The launcher recipient is a compile-time constant, not a constructor argument."
     },
     "renderer": {
@@ -102,26 +102,26 @@
       "creationCodeHash": "0x910d02d740c71d608b1dc3f49e26288b0f8a62abda0c7767e251d53520a6b51e"
     },
     "hookTemplate": {
-      "runtimeBytes": 24358,
-      "creationCodeBytes": 26295,
-      "deploymentInitcodeBytes": 26583,
-      "runtimeCodeHash": "0x4a535daba1b2eb5fc83156f6ddb4f1e341fe6b240674b6dc770a359a93f8d167",
-      "creationCodeHash": "0x34df1ce932b3ca8eebc45eff8116378cbcd5a4a285fd2bf0c28bd78a350d8a2f",
+      "runtimeBytes": 24465,
+      "creationCodeBytes": 26402,
+      "deploymentInitcodeBytes": 26690,
+      "runtimeCodeHash": "0x07d1d8a50ed58bb22231105094735b54c2da15903fedfb7a4237cadc264ec601",
+      "creationCodeHash": "0x3fbdbc069ee5bfcb1ded77a8d4e550f1bb0692a488b6eb5d23dac090fbca0716",
       "note": "Runtime artifact is unpatched; deployment initcode adds 288 bytes of constructor arguments. Its hash is recorded after launch inputs are fixed."
     },
     "shard": {
       "runtimeBytes": 1875,
-      "creationCodeBytes": 2792,
-      "deploymentInitcodeBytes": 2792,
+      "creationCodeBytes": 3001,
+      "deploymentInitcodeBytes": 3193,
       "runtimeCodeHash": "0xb2737fd93f2ff31e850e2be773e6e7a92a239b28091be1d4b122ff864cd7aae8",
-      "creationCodeHash": "0x6b55632624f9bb9fab7974eb4c1591d060775fb771862e6bdd4572f84f303d59"
+      "creationCodeHash": "0xa6461c32c0121f0090519945d9c22ed6406a783994e020f72a20e85796cad107"
     },
     "nftTemplate": {
-      "runtimeBytes": 7258,
-      "creationCodeBytes": 8019,
-      "deploymentInitcodeBytes": 8083,
-      "runtimeCodeHash": "0x2daa6dd619b7f8946b6fbf5a105774d73b6a3d90d3c4689bd4f6743b4c1f81af",
-      "creationCodeHash": "0x2934b883eeb2e0e658e87eeddf3e61842dc44010367c150ceed38e582a2798fe",
+      "runtimeBytes": 7318,
+      "creationCodeBytes": 8240,
+      "deploymentInitcodeBytes": 8496,
+      "runtimeCodeHash": "0x82f9916598d254c7f16bf5d8bcd324906c832d47eb69f88fc88a32accad5d1cd",
+      "creationCodeHash": "0x888e18b33ff193b65eb61f44bc578d8d9365b505014af3782762a9d61fa39150",
       "note": "Deployment initcode adds 64 bytes for the predicted hook and shared renderer. Its hash is recorded after launch inputs are fixed."
     }
   },
