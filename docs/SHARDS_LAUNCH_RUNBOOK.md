@@ -28,12 +28,14 @@ The full pinned plan — factory, renderer, effective token salt, mined hook sal
 ```bash
 ./scripts/bootstrap-deps.sh
 forge fmt --check
-forge build --sizes
+forge build --sizes --skip test
 forge inspect ShardHookV1 bytecode | cast keccak
 forge inspect ShardHookV1 deployedBytecode | cast keccak
 forge inspect ShardLaunchFactoryV1 bytecode | cast keccak
 forge inspect ShardLaunchFactoryV1 deployedBytecode | cast keccak
 ```
+
+The size command is scoped to `src`: test harnesses inherit `ShardHookV1` and are never deployed, so they sit over EIP-170 by construction and would mask a real regression. Every deployable artifact is still checked here, and again by `test/ShardArtifactManifestV1.t.sol` against the limits declared in `spec/shards-v1.json`.
 
 `bytecode` is the constructor-free creation-code artifact. Record it separately from full deployment initcode, which appends constructor arguments. Every runtime must remain below 24,576 bytes and full factory deployment initcode must remain below 49,152 bytes. `keccak256` of the `ShardHookV1` creation-code artifact must equal the hook creation-code hash in Fixed inputs.
 

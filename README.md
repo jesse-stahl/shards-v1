@@ -56,12 +56,20 @@ Dependencies are cloned at pinned commits rather than vendored:
 
 ```bash
 ./scripts/bootstrap-deps.sh
-forge build --sizes
+forge build --sizes --skip test
 forge test
 ```
 
 `solc 0.8.26`, `cancun`, optimizer at 1,000 runs, no via-ir. `ShardHookV1` runs close to the EIP-170 limit,
-so `forge build --sizes` is part of the normal loop rather than an afterthought.
+so the size command is part of the normal loop rather than an afterthought.
+
+The size gate is scoped to `src` with `--skip test` because that is where the limit actually applies. The
+test harnesses inherit `ShardHookV1` and add external entry points on top of it, so with the hook itself
+within about a hundred bytes of the limit, any harness necessarily exceeds it — `FeeHookHarness` and
+`FeeSplitHarness` both do. They are never deployed to a chain, so that is not a defect to trim away; an
+unscoped command would simply fail forever and stop being read. Deployable artifacts are still gated twice:
+this command fails if anything in `src` exceeds the limit, and `test/ShardArtifactManifestV1.t.sol` asserts
+every production artifact against the limits declared in `spec/shards-v1.json`.
 
 The Ethereum-fork suite is skipped unless an archive endpoint is supplied:
 
