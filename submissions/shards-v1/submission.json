@@ -1,0 +1,1607 @@
+{
+  "$schema": "urn:programmable:v4-hook-submission:1.6.0",
+  "schemaVersion": 1,
+  "standardVersion": "1.6.0",
+  "stage": "prototype",
+  "model": {
+    "id": "shards-v1",
+    "name": "Shards",
+    "summary": "A fixed 10,000-piece onchain generative ERC-721 collection market-made by a Uniswap v4 hook against permanently locked single-sided liquidity priced in native ETH.",
+    "userOutcome": "A collector buys a piece from the curve at a price the curve sets, holds art that exists onchain only while the piece is held, earns a pro-rata share of every trading fee while holding, and can sell the piece back to the same curve at any time without needing a counterparty. Selling destroys that artwork permanently.",
+    "category": "other",
+    "whyV4": "The market maker, the fee accounting and the NFT inventory must be one atomic PoolManager participant. Buying a piece is a swap plus an ERC-721 mint plus a fee split that must all succeed or all revert; a router or periphery contract cannot make that atomic, and cannot charge an inclusive fee on the ETH leg using return deltas. beforeSwapReturnDelta and afterSwapReturnDelta are what let the fee be inclusive rather than additive in every direction and exactness quadrant."
+  },
+  "builder": {
+    "github": "jesse-stahl",
+    "contact": "https://github.com/jesse-stahl",
+    "beneficiary": "0xceeBB3A6543CeBEB2ED66963897A0abEA52A50cC",
+    "licenseDeclaration": "MIT for all first-party source in this repository. Dependencies are cloned at pinned commits by scripts/bootstrap-deps.sh and retain their own licenses: Uniswap v4-core and v4-periphery, OpenZeppelin contracts, Solmate, forge-std and permit2. No third-party code is vendored into src/."
+  },
+  "builderTemplate": {
+    "schemaVersion": "1.0.0",
+    "source": "manual",
+    "templateSelection": null
+  },
+  "publicMetadata": {
+    "project": {
+      "name": "Shards",
+      "description": "A fixed 10,000-piece onchain generative ERC-721 collection market-made by a Uniswap v4 hook against permanently locked single-sided liquidity priced in native ETH. Every piece is backed 1:1 by an ERC-20 unit held by the hook, and the art exists only while the piece is held.",
+      "projectUri": "https://github.com/jesse-stahl/shards-v1",
+      "logoUri": null,
+      "logoContentHash": null,
+      "metadataMutable": false,
+      "metadataOwner": null
+    },
+    "token": {
+      "name": "Shard",
+      "symbol": "SHARD",
+      "metadataUri": null,
+      "metadataContentHash": null,
+      "logoUri": null,
+      "logoContentHash": null,
+      "metadataMutable": false,
+      "metadataOwner": null
+    },
+    "localDiscoveryTags": [
+      "bonding-curve",
+      "fee-sharing",
+      "fixed-supply",
+      "generative-art",
+      "nft",
+      "onchain-svg"
+    ],
+    "claimedAffiliations": [],
+    "providerPresentations": []
+  },
+  "target": {
+    "chainId": 1,
+    "network": "ethereum",
+    "solidityVersion": "0.8.26",
+    "evmVersion": "cancun",
+    "dependencyBaseline": "programmable-tested",
+    "officialLaunchProfileId": null
+  },
+  "assets": [
+    {
+      "id": "eth",
+      "role": "quote",
+      "origin": "native-eth",
+      "address": null,
+      "decimals": 18,
+      "decimalsSource": "native-eth-protocol",
+      "supplyPolicy": "native",
+      "initialSupply": null,
+      "behaviors": [
+        "standard"
+      ],
+      "controls": []
+    },
+    {
+      "id": "launched-token",
+      "role": "launched",
+      "origin": "new-fixed-supply",
+      "address": null,
+      "decimals": 18,
+      "decimalsSource": "implementation-constant",
+      "supplyPolicy": "fixed-at-creation",
+      "initialSupply": "10000000000000000000000",
+      "behaviors": [
+        "standard"
+      ],
+      "controls": []
+    }
+  ],
+  "launchLifecycle": {
+    "tokenCreation": {
+      "applicable": true,
+      "actor": "ShardLaunchFactoryV1, called once by the launch sender.",
+      "valueFlow": "The entire 10,000e18 fixed supply is minted to the factory and immediately forwarded to the hook.",
+      "custody": "The factory holds the supply only within the launch transaction and ends holding zero SHARD.",
+      "failure": "The whole launch call reverts and no contract is created at any predicted address.",
+      "event": "ShardLaunched(address,address,address,bytes32,bytes32,address,address,bytes32)",
+      "notApplicableReason": null
+    },
+    "poolInitialization": {
+      "applicable": true,
+      "actor": "The hook, driven by the factory inside the same launch transaction.",
+      "valueFlow": "No value moves. The canonical PoolKey is initialised at the pinned start price.",
+      "custody": "No party takes custody of anything during initialisation. The canonical PoolKey is created at the pinned start price and no token or ETH balance moves in this phase.",
+      "failure": "_beforeInitialize reverts WrongPool or WrongStartPrice and the launch reverts atomically.",
+      "event": "Initialised(bytes32,uint128,uint128,uint256)",
+      "notApplicableReason": null
+    },
+    "liquidityFormation": {
+      "applicable": true,
+      "actor": "The hook, inside one PoolManager unlock in the launch transaction.",
+      "valueFlow": "All 10,000e18 SHARD becomes two permanently locked single-sided positions: 3,000e18 full range and 7,000e18 in the concentrated band.",
+      "custody": "PoolManager holds the position; the hook owns it and has no code path that can ever remove it.",
+      "failure": "The launch reverts atomically; no partial position is left behind.",
+      "event": "Initialised(bytes32,uint128,uint128,uint256)",
+      "notApplicableReason": null
+    },
+    "initialTransaction": {
+      "applicable": true,
+      "actor": "Any buyer calling buyNFT, buyMany or buyMax on the hook, or swapping the canonical pool directly through PoolManager.",
+      "valueFlow": "The first buy moves price down from tick 69060 into the band, which is when liquidity first becomes active.",
+      "custody": "The buyer receives pieces; the hook holds the backing SHARD.",
+      "failure": "The buy reverts and the pool remains at its start price.",
+      "event": "Transfer(address,address,uint256)",
+      "notApplicableReason": null
+    },
+    "trading": {
+      "applicable": true,
+      "actor": "Any caller, either through the hook's own entry points or by swapping the canonical pool directly.",
+      "valueFlow": "ETH and SHARD move along the curve; 1% inclusive is charged on the ETH leg of every swap.",
+      "custody": "The hook holds the SHARD backing every minted piece and the accrued fee balances.",
+      "failure": "Individual swaps revert on slippage, deadline, MAX_BATCH or a non-canonical pool. No global failure state exists.",
+      "event": "FeeDistributed(uint256,uint256)",
+      "notApplicableReason": null
+    },
+    "feesAndClaims": {
+      "applicable": true,
+      "actor": "Holders, the builder and Programmable, each independently.",
+      "valueFlow": "Accrued ETH moves from the hook to the claimant.",
+      "custody": "The hook custodies accrued fees until claimed; balances are separate and cannot be netted.",
+      "failure": "A claim with nothing accrued reverts NothingToClaim; no partial payment is possible.",
+      "event": "Claimed(address,uint256)",
+      "notApplicableReason": null
+    },
+    "dependencyFailure": {
+      "applicable": true,
+      "actor": "None. Uniswap v4 PoolManager is the only dependency.",
+      "valueFlow": "No value moves.",
+      "custody": "Custody is unchanged in every dependency-failure scenario. The hook continues to hold the SHARD backing every minted piece and the accrued fee balances, and PoolManager continues to hold the locked positions.",
+      "failure": "If PoolManager were unavailable the market would simply be inert. There is no oracle, keeper, bridge or offchain dependency that could fail, and no fallback path that could move user value.",
+      "event": "No event is emitted, because there is no dependency-failure code path to emit one. Uniswap v4 PoolManager is the only dependency and there is no oracle, keeper, bridge or offchain input that could fail.",
+      "notApplicableReason": null
+    },
+    "retirement": {
+      "applicable": true,
+      "actor": "None. There is no retirement path by design.",
+      "valueFlow": "No value moves.",
+      "custody": "Liquidity stays locked permanently and the 1:1 backing is never dissolved.",
+      "failure": "Not applicable: no contract can be paused, upgraded, drained or retired.",
+      "event": "No event is emitted, because no retirement path exists. Nothing can be paused, upgraded, drained, migrated or retired by any party.",
+      "notApplicableReason": null
+    }
+  },
+  "launchPlan": {
+    "executorVersion": "launch-authorization-executor-v1",
+    "targetStrategy": "exact-authorized-contract-call",
+    "targetComponent": "shard-launch-factory-v1",
+    "callDataFunction": "launch(bytes32,bytes32,bytes,(int24,int24,int24,uint160,address,string,string,string,string))",
+    "callDataSourcePaths": [
+      "src/ShardLaunchFactoryV1.sol",
+      "script/LaunchShardsV1.s.sol"
+    ],
+    "hookConfigurationRule": "The factory mines the hook salt until the CREATE2 address carries exactly beforeInitialize, beforeSwap, afterSwap, beforeSwapReturnDelta and afterSwapReturnDelta (mask 0x20cc) and refuses to deploy on any other combination. It also pins keccak256 of the hook creation code at construction and rejects any other bytes.",
+    "hookConfigurationSourcePaths": [
+      "src/ShardLaunchFactoryV1.sol",
+      "src/ShardHookV1.sol"
+    ],
+    "initialLiquidityRule": "The factory transfers the entire 10,000e18 fixed supply to the hook, which seeds two permanently locked single-sided positions inside one unlock callback: 3,000e18 across the full range and 7,000e18 in the concentrated band. Liquidity is never withdrawable. The pool initialises at tick 69060, the upper bound of both positions, so active in-range liquidity is zero until the first buy moves price down into the band.",
+    "liquiditySourcePaths": [
+      "src/ShardHookV1.sol"
+    ],
+    "testPaths": [
+      "test/ShardLaunchSequenceV1.t.sol",
+      "test/ShardLaunchFactoryV1.t.sol",
+      "test/ShardHookLiquidityV1.t.sol",
+      "test/ShardV1MainnetFork.t.sol"
+    ],
+    "nativeValueRule": "The launch call carries no native value; the pool is seeded entirely from the token side.",
+    "minimumNativeValue": "0",
+    "maximumNativeValue": "0",
+    "nativeValueSource": "No native value is attached to the launch call; the pool is seeded entirely from the fixed token supply.",
+    "refundRecipientPolicy": "Not applicable: the launch call accepts no native value, so there is nothing to refund.",
+    "poolMustBeUninitialized": true,
+    "postAcceptanceBundleRequired": true
+  },
+  "pool": {
+    "currency0": "eth",
+    "currency1": "launched-token",
+    "orderingRule": "Native ETH is currency0 and the launched token is currency1 in this canonical PoolKey; additional project assets may independently use launched or quote roles.",
+    "tickSpacing": 60,
+    "minimumInitialLiquidity": "341145878011540414018",
+    "lpFee": {
+      "classification": "lp-fee",
+      "mode": "static",
+      "hundredthsOfBip": 0,
+      "initialHundredthsOfBip": null,
+      "initializationPath": null,
+      "applicationMode": null,
+      "overrideFlagPolicy": null,
+      "persistentUpdateActor": null,
+      "persistentUpdateCallSites": [],
+      "rateLimit": null,
+      "updatePath": null,
+      "minimum": null,
+      "maximum": null,
+      "inputMetric": null,
+      "referenceAsset": null,
+      "measurementUnit": null,
+      "observationMode": null,
+      "observationWindow": null,
+      "curve": null,
+      "updateCadence": null,
+      "liquidityDecreaseBehavior": null,
+      "manipulationResistance": null,
+      "failureRule": null,
+      "recipient": "pool-liquidity-providers"
+    },
+    "canonical": true,
+    "alternativePools": "Alternative pools may exist and do not inherit this model's behavior."
+  },
+  "programmableFee": {
+    "policyId": "programmable-volume-fee-v1",
+    "policyVersion": "1.1.0",
+    "poolScope": "canonical-launch-pool-key",
+    "rates": {
+      "unit": "hundredths-of-bip",
+      "selectedBuyHundredthsOfBip": 10000,
+      "selectedSellHundredthsOfBip": 10000,
+      "minimumEffectiveHundredthsOfBip": 1000,
+      "effectiveBuyHundredthsOfBip": 10000,
+      "effectiveSellHundredthsOfBip": 10000,
+      "platformHundredthsOfBip": 1000,
+      "projectBuyHundredthsOfBip": 9000,
+      "projectSellHundredthsOfBip": 9000,
+      "formula": "per-side:effective=max(selected,1000);platform=1000;project=effective-1000",
+      "lpFeeExcluded": true
+    },
+    "basis": {
+      "volume": "gross-quote-side-swap-volume",
+      "quoteAsset": "canonical-pool-quote-asset"
+    },
+    "ownership": {
+      "owner": "0x4957f49620AFf3Adbbe8195a4f633E49cc93376c",
+      "immutable": true,
+      "claimAuthority": "owner-only",
+      "claimAvailability": "anytime",
+      "claimDestinationPolicy": "owner-or-owner-selected-per-claim",
+      "storedMutableRecipient": false,
+      "builderCanMutate": false,
+      "projectCanMutate": false,
+      "administratorCanMutate": false
+    },
+    "collection": {
+      "status": "implemented",
+      "integration": "canonical-pool-hook",
+      "enforcement": "non-bypassable",
+      "hookFeeMechanismBinding": "hook.feeMechanism",
+      "supportedSwapModes": [
+        "zeroForOne-exactInput",
+        "zeroForOne-exactOutput",
+        "oneForZero-exactInput",
+        "oneForZero-exactOutput"
+      ],
+      "swapModePaths": {
+        "zeroForOneExactInput": "before-swap-return-delta",
+        "zeroForOneExactOutput": "after-swap-return-delta",
+        "oneForZeroExactInput": "after-swap-return-delta",
+        "oneForZeroExactOutput": "before-swap-return-delta"
+      },
+      "selfCallPolicy": "same-pool-swap-fee-enforced-internally"
+    },
+    "accounting": {
+      "accrualMode": "claimable-liability",
+      "liabilityKeyDimensions": [
+        "poolId",
+        "currency",
+        "owner"
+      ],
+      "crossPoolNetting": false,
+      "roundingPolicy": "cumulative-independent-platform-project-remainders",
+      "remainderScope": "canonical-pool-lifetime",
+      "claimResetsRemainders": false,
+      "minimumGrossQuoteUnits": 1000,
+      "fragmentationResistant": true,
+      "valueFlowId": "swap-fee",
+      "collectionEvent": "FeeDistributed(uint256,uint256)",
+      "claimEvent": "LauncherFeesClaimed(address,uint256)"
+    },
+    "evidence": {
+      "sourcePaths": [
+        "src/ShardFeeDistributorV1.sol",
+        "src/ShardHookV1.sol",
+        "src/ShardConstantsV1.sol"
+      ],
+      "testPaths": [
+        "test/ShardFeeSplitV1.t.sol",
+        "test/ShardHookFeesV1.t.sol",
+        "test/ShardFeeDistributorV1.t.sol",
+        "test/ShardFeeDonationV1.t.sol"
+      ]
+    }
+  },
+  "hook": {
+    "used": true,
+    "base": "v4-periphery BaseHook",
+    "upgradeable": false,
+    "sharedAcrossPools": false,
+    "poolNamespace": "One ShardHookV1 instance serves exactly one canonical PoolKey, fixed at initialisation.",
+    "poolAdmission": {
+      "enforcement": "hook-enforced",
+      "factoryOrRegistry": "ShardLaunchFactoryV1 deploys the token, hook and NFT atomically by CREATE2 and mines the hook salt so the address carries exactly the declared permission bits.",
+      "alternativePoolBehavior": "Any PoolKey other than the canonical one is rejected; alternative pools cannot inherit this model's behavior.",
+      "rejectionRule": "_beforeInitialize reverts WrongPool unless currency0 is native ETH, currency1 is the exact SHARD address, fee equals POOL_FEE and tickSpacing equals TICK_SPACING; _guardPool additionally reverts WrongPool on every swap whose PoolId differs from the stored canonical PoolId."
+    },
+    "permissions": {
+      "beforeInitialize": true,
+      "afterInitialize": false,
+      "beforeAddLiquidity": false,
+      "afterAddLiquidity": false,
+      "beforeRemoveLiquidity": false,
+      "afterRemoveLiquidity": false,
+      "beforeSwap": true,
+      "afterSwap": true,
+      "beforeDonate": false,
+      "afterDonate": false,
+      "beforeSwapReturnDelta": true,
+      "afterSwapReturnDelta": true,
+      "afterAddLiquidityReturnDelta": false,
+      "afterRemoveLiquidityReturnDelta": false
+    },
+    "callbackPolicies": [
+      {
+        "callback": "beforeInitialize",
+        "necessity": "Rejects any PoolKey that is not the canonical one before the pool can exist, which is what binds this hook to exactly one market.",
+        "allowedReverts": "WrongPool for a non-canonical currency pair, fee or tick spacing, and WrongStartPrice when the supplied start price is not the pinned one.",
+        "userExitImpact": "None. A revert here means the pool was never created, so no user holds a position that could need exiting.",
+        "noSelfCallImpact": "The hook never initialises a pool as a self-call; only the factory drives initialisation once."
+      },
+      {
+        "callback": "beforeSwap",
+        "necessity": "Charges the inclusive 1% fee on the ETH leg when ETH is the specified currency, returning a positive specified delta so the fee is never additive.",
+        "allowedReverts": "NotInitialised before the market is seeded and WrongPool for any PoolId other than the canonical one.",
+        "userExitImpact": "A revert blocks that one swap and moves no value; holders can still sell or redeem through the hook's own paths, which do not depend on this callback.",
+        "noSelfCallImpact": "v4 skips this callback when the hook is the swapper, so hook-initiated buys and sells charge the identical fee internally through _chargeFee instead."
+      },
+      {
+        "callback": "afterSwap",
+        "necessity": "Charges the inclusive fee when ETH is the unspecified currency and its executed amount is only known after the core swap, and enforces the MAX_BATCH cap on SHARD moved in one swap.",
+        "allowedReverts": "SwapTooLarge above 50 SHARD moved, NotInitialised before seeding, and WrongPool for a non-canonical PoolId.",
+        "userExitImpact": "A revert unwinds the whole swap atomically with no partial state; a large position is exited across several transactions instead of one.",
+        "noSelfCallImpact": "Skipped for hook-initiated swaps, whose own MAX_BATCH checks bound them, so the cap is not double-applied."
+      }
+    ],
+    "hookData": {
+      "used": false,
+      "schema": null,
+      "identitySource": null,
+      "trustedRouterDeploymentRecordId": null,
+      "callbackSenderRule": null,
+      "validation": null
+    },
+    "feeMechanism": {
+      "used": true,
+      "classification": "hook-owned-fee",
+      "allocationMode": "programmable-rate-formula",
+      "chargedCurrency": "currency0",
+      "swapQuadrants": {
+        "zeroForOneExactInput": {
+          "currency": "currency0",
+          "basis": "gross-input",
+          "rounding": "down",
+          "formula": "fee = (grossEthIn * 100 + feeCarryIn) / 10000; carry retained",
+          "maximumHundredthsOfBip": 10000
+        },
+        "zeroForOneExactOutput": {
+          "currency": "currency0",
+          "basis": "gross-input",
+          "rounding": "up",
+          "formula": "fee = (executedEthOut * 100 + feeCarryOut) / 9900; carry retained",
+          "maximumHundredthsOfBip": 10000
+        },
+        "oneForZeroExactInput": {
+          "currency": "currency0",
+          "basis": "gross-output",
+          "rounding": "down",
+          "formula": "fee = (executedEthOut * 100 + feeCarryOut) / 10000; carry retained",
+          "maximumHundredthsOfBip": 10000
+        },
+        "oneForZeroExactOutput": {
+          "currency": "currency0",
+          "basis": "gross-output",
+          "rounding": "up",
+          "formula": "fee = (grossEthIn * 100 + feeCarryIn) / 9900; carry retained",
+          "maximumHundredthsOfBip": 10000
+        }
+      },
+      "maximumHundredthsOfBip": 10000,
+      "collectionPath": "quadrant-dependent-swap-return-delta",
+      "collectionValueFlowId": "swap-fee",
+      "liabilityKeyDimensions": [
+        "poolId",
+        "currency",
+        "beneficiary"
+      ],
+      "collectionEvent": "FeeDistributed(uint256,uint256)",
+      "recipients": [
+        {
+          "role": "programmable-platform",
+          "sharePpm": null,
+          "addressSource": "fixed-address",
+          "address": "0x4957f49620AFf3Adbbe8195a4f633E49cc93376c",
+          "binding": "exact-address",
+          "derivationRule": null,
+          "mutable": false,
+          "mutationController": "none",
+          "newAddressValidation": "none",
+          "mutationEvent": null
+        },
+        {
+          "role": "project-owner",
+          "sharePpm": null,
+          "addressSource": "derived-contract",
+          "address": null,
+          "binding": "immutable-derived-contract",
+          "derivationRule": "The project share is not paid to a single address. It is split inside the hook between the ERC-721 holder accumulator (0.80% of volume) and the builder recipient (0.10%). The distribution contract is the hook itself, deployed by CREATE2 at an address the launch commits to and which no party can change.",
+          "mutable": false,
+          "mutationController": "none",
+          "newAddressValidation": "none",
+          "mutationEvent": null
+        },
+        {
+          "role": "builder",
+          "sharePpm": null,
+          "addressSource": "fixed-address",
+          "address": "0xceeBB3A6543CeBEB2ED66963897A0abEA52A50cC",
+          "binding": "exact-address",
+          "derivationRule": null,
+          "mutable": true,
+          "mutationController": "current-beneficiary-only",
+          "newAddressValidation": "nonzero-ethereum-address",
+          "mutationEvent": "BuilderFeeRecipientChanged(address,address)"
+        }
+      ],
+      "ownership": "The 0.10% Programmable share is bound to the immutable constant launcherFeeRecipient and is claimable only by that address. The 0.10% builder share is claimable only by the current builderFeeRecipient, which only the current builder can rotate. Neither role can touch the other's balance or the holder pool.",
+      "claimPolicy": "Pull-only. claimLauncherFees and claimBuilderFees are separately authorized, zero the caller's own accrued balance before transferring, and are reentrancy-guarded. There is no sweep, rescue, or administrator path."
+    },
+    "customAccounting": {
+      "used": true,
+      "backingSource": "Hook inventory: every SHARD the hook holds corresponds 1:1 to an unsold or archived ERC-721 piece, and 1e18 SHARD redeems for exactly one piece.",
+      "conservationEquation": "nft.totalSupply() + hookShardBalance/1e18 == MAX_NFTS at every point outside a single unlock callback.",
+      "settlement": "The hook settles the ETH leg with PoolManager inside unlock, takes its inclusive fee as a positive specified delta, and refunds unspent ETH to the caller in the same transaction.",
+      "partialFillBehavior": "Hook-initiated actions revert PartialFillNotSupported when the pool fills less than requested; third-party swaps are permitted to partially fill and the disclosed consequence is recorded in the threat model.",
+      "liabilityNamespace": "per-canonical-pool",
+      "liabilityKeyDimensions": [
+        "poolId",
+        "currency",
+        "beneficiary"
+      ],
+      "crossPoolNetting": false,
+      "duplicateCurrencyPolicy": "Not applicable: currency0 is native ETH and currency1 is the SHARD ERC-20; a PoolKey with equal currencies is rejected at initialisation.",
+      "failureIsolation": "Every hook action either completes fully or reverts; there is no partial-state path.",
+      "withdrawalOrdering": "Holder claims, builder claims and launcher claims are independent pull paths with no ordering dependency and no shared balance."
+    },
+    "returnDeltaAccounting": {
+      "used": true,
+      "quadrants": {
+        "zeroForOneExactInput": {
+          "specifiedDeltaCanConsumeEntireAmount": false,
+          "zeroAmmLeg": "forbidden",
+          "partialFillRule": "Hook-initiated actions revert PartialFillNotSupported. Third-party swaps may partially fill; when the fee was charged in beforeSwap on the requested size it is not recomputed, and that disclosed consequence is recorded in the threat model.",
+          "slippageInvariant": "The caller supplies maxEthIn or minEthOut plus a deadline; the hook reverts rather than settling outside those bounds.",
+          "failureRule": "Revert the entire unlock callback.",
+          "residualAmmEquation": "amountSpecified-plus-specifiedDelta",
+          "finalCallerDeltaEquation": "pool-manager-swap-delta-minus-hook-delta",
+          "supported": true,
+          "specifiedCurrency": "currency0",
+          "unspecifiedCurrency": "currency1",
+          "amountSign": "negative-exact-input",
+          "rounding": "The inclusive fee is floored at 1% of the gross ETH input and the sub-wei remainder is carried in feeCarryIn, so the protocol never rounds in the caller's favour and nothing is lost across calls.",
+          "specifiedComponent": {
+            "mode": "positive-only",
+            "formula": "fee = 1% of the gross ETH leg, inclusive, with the sub-wei remainder carried across calls in feeCarryIn or feeCarryOut.",
+            "minimum": "Zero, which occurs when the computed inclusive fee rounds down to nothing for a dust-sized swap and the remainder is carried instead.",
+            "maximum": "One percent of the gross ETH leg of the swap, which is the immutable product-level cap declared in maximumHundredthsOfBip.",
+            "minimumSign": "zero",
+            "maximumSign": "positive",
+            "positiveSettlementActions": [
+              {
+                "order": 1,
+                "actor": "hook",
+                "operation": "take",
+                "currency": "specified",
+                "assetKind": "native",
+                "deltaOwner": "hook",
+                "deltaEffect": "negative",
+                "counterparty": "PoolManager",
+                "authorizationRule": "Only reachable inside the hook's own PoolManager unlock callback, which authenticates msg.sender as PoolManager.",
+                "msgValueRule": "Native ETH already held by PoolManager for this swap; the hook attaches no additional msg.value.",
+                "amountRule": "Exactly the computed inclusive fee, which is at most one percent of the gross ETH leg of this swap.",
+                "completionDeadline": "before-hook-return"
+              }
+            ],
+            "negativeSettlementActions": []
+          },
+          "unspecifiedComponent": {
+            "mode": "zero-only",
+            "formula": null,
+            "minimum": "0",
+            "maximum": "0",
+            "minimumSign": "zero",
+            "maximumSign": "zero",
+            "positiveSettlementActions": [],
+            "negativeSettlementActions": []
+          }
+        },
+        "zeroForOneExactOutput": {
+          "specifiedDeltaCanConsumeEntireAmount": false,
+          "zeroAmmLeg": "forbidden",
+          "partialFillRule": "Hook-initiated actions revert PartialFillNotSupported. Third-party swaps may partially fill; when the fee was charged in beforeSwap on the requested size it is not recomputed, and that disclosed consequence is recorded in the threat model.",
+          "slippageInvariant": "The caller supplies maxEthIn or minEthOut plus a deadline; the hook reverts rather than settling outside those bounds.",
+          "failureRule": "Revert the entire unlock callback.",
+          "residualAmmEquation": "amountSpecified-plus-specifiedDelta",
+          "finalCallerDeltaEquation": "pool-manager-swap-delta-minus-hook-delta",
+          "supported": true,
+          "specifiedCurrency": "currency1",
+          "unspecifiedCurrency": "currency0",
+          "amountSign": "positive-exact-output",
+          "rounding": "The fee is grossed up over 9,900 so the caller still receives the exact requested output, with the sub-wei remainder carried in feeCarryOut.",
+          "specifiedComponent": {
+            "mode": "zero-only",
+            "formula": null,
+            "minimum": "0",
+            "maximum": "0",
+            "minimumSign": "zero",
+            "maximumSign": "zero",
+            "positiveSettlementActions": [],
+            "negativeSettlementActions": []
+          },
+          "unspecifiedComponent": {
+            "mode": "positive-only",
+            "formula": "fee = 1% of the gross ETH leg, inclusive, with the sub-wei remainder carried across calls in feeCarryIn or feeCarryOut.",
+            "minimum": "Zero, which occurs when the computed inclusive fee rounds down to nothing for a dust-sized swap and the remainder is carried instead.",
+            "maximum": "One percent of the gross ETH leg of the swap, which is the immutable product-level cap declared in maximumHundredthsOfBip.",
+            "minimumSign": "zero",
+            "maximumSign": "positive",
+            "positiveSettlementActions": [
+              {
+                "order": 1,
+                "actor": "hook",
+                "operation": "take",
+                "currency": "unspecified",
+                "assetKind": "native",
+                "deltaOwner": "hook",
+                "deltaEffect": "negative",
+                "counterparty": "PoolManager",
+                "authorizationRule": "Only reachable inside the hook's own PoolManager unlock callback, which authenticates msg.sender as PoolManager.",
+                "msgValueRule": "Native ETH already held by PoolManager for this swap; the hook attaches no additional msg.value.",
+                "amountRule": "Exactly the computed inclusive fee, which is at most one percent of the gross ETH leg of this swap.",
+                "completionDeadline": "before-hook-return"
+              }
+            ],
+            "negativeSettlementActions": []
+          }
+        },
+        "oneForZeroExactInput": {
+          "specifiedDeltaCanConsumeEntireAmount": false,
+          "zeroAmmLeg": "forbidden",
+          "partialFillRule": "Hook-initiated actions revert PartialFillNotSupported. Third-party swaps may partially fill; when the fee was charged in beforeSwap on the requested size it is not recomputed, and that disclosed consequence is recorded in the threat model.",
+          "slippageInvariant": "The caller supplies maxEthIn or minEthOut plus a deadline; the hook reverts rather than settling outside those bounds.",
+          "failureRule": "Revert the entire unlock callback.",
+          "residualAmmEquation": "amountSpecified-plus-specifiedDelta",
+          "finalCallerDeltaEquation": "pool-manager-swap-delta-minus-hook-delta",
+          "supported": true,
+          "specifiedCurrency": "currency1",
+          "unspecifiedCurrency": "currency0",
+          "amountSign": "negative-exact-input",
+          "rounding": "The fee is floored against the executed ETH output known only after the core swap, with the sub-wei remainder carried in feeCarryOut.",
+          "specifiedComponent": {
+            "mode": "zero-only",
+            "formula": null,
+            "minimum": "0",
+            "maximum": "0",
+            "minimumSign": "zero",
+            "maximumSign": "zero",
+            "positiveSettlementActions": [],
+            "negativeSettlementActions": []
+          },
+          "unspecifiedComponent": {
+            "mode": "positive-only",
+            "formula": "fee = 1% of the gross ETH leg, inclusive, with the sub-wei remainder carried across calls in feeCarryIn or feeCarryOut.",
+            "minimum": "Zero, which occurs when the computed inclusive fee rounds down to nothing for a dust-sized swap and the remainder is carried instead.",
+            "maximum": "One percent of the gross ETH leg of the swap, which is the immutable product-level cap declared in maximumHundredthsOfBip.",
+            "minimumSign": "zero",
+            "maximumSign": "positive",
+            "positiveSettlementActions": [
+              {
+                "order": 1,
+                "actor": "hook",
+                "operation": "take",
+                "currency": "unspecified",
+                "assetKind": "native",
+                "deltaOwner": "hook",
+                "deltaEffect": "negative",
+                "counterparty": "PoolManager",
+                "authorizationRule": "Only reachable inside the hook's own PoolManager unlock callback, which authenticates msg.sender as PoolManager.",
+                "msgValueRule": "Native ETH already held by PoolManager for this swap; the hook attaches no additional msg.value.",
+                "amountRule": "Exactly the computed inclusive fee, which is at most one percent of the gross ETH leg of this swap.",
+                "completionDeadline": "before-hook-return"
+              }
+            ],
+            "negativeSettlementActions": []
+          }
+        },
+        "oneForZeroExactOutput": {
+          "specifiedDeltaCanConsumeEntireAmount": false,
+          "zeroAmmLeg": "forbidden",
+          "partialFillRule": "Hook-initiated actions revert PartialFillNotSupported. Third-party swaps may partially fill; when the fee was charged in beforeSwap on the requested size it is not recomputed, and that disclosed consequence is recorded in the threat model.",
+          "slippageInvariant": "The caller supplies maxEthIn or minEthOut plus a deadline; the hook reverts rather than settling outside those bounds.",
+          "failureRule": "Revert the entire unlock callback.",
+          "residualAmmEquation": "amountSpecified-plus-specifiedDelta",
+          "finalCallerDeltaEquation": "pool-manager-swap-delta-minus-hook-delta",
+          "supported": true,
+          "specifiedCurrency": "currency0",
+          "unspecifiedCurrency": "currency1",
+          "amountSign": "positive-exact-output",
+          "rounding": "The fee is grossed up over 9,900 against the requested ETH output, with the sub-wei remainder carried in feeCarryIn.",
+          "specifiedComponent": {
+            "mode": "positive-only",
+            "formula": "fee = 1% of the gross ETH leg, inclusive, with the sub-wei remainder carried across calls in feeCarryIn or feeCarryOut.",
+            "minimum": "Zero, which occurs when the computed inclusive fee rounds down to nothing for a dust-sized swap and the remainder is carried instead.",
+            "maximum": "One percent of the gross ETH leg of the swap, which is the immutable product-level cap declared in maximumHundredthsOfBip.",
+            "minimumSign": "zero",
+            "maximumSign": "positive",
+            "positiveSettlementActions": [
+              {
+                "order": 1,
+                "actor": "hook",
+                "operation": "take",
+                "currency": "specified",
+                "assetKind": "native",
+                "deltaOwner": "hook",
+                "deltaEffect": "negative",
+                "counterparty": "PoolManager",
+                "authorizationRule": "Only reachable inside the hook's own PoolManager unlock callback, which authenticates msg.sender as PoolManager.",
+                "msgValueRule": "Native ETH already held by PoolManager for this swap; the hook attaches no additional msg.value.",
+                "amountRule": "Exactly the computed inclusive fee, which is at most one percent of the gross ETH leg of this swap.",
+                "completionDeadline": "before-hook-return"
+              }
+            ],
+            "negativeSettlementActions": []
+          },
+          "unspecifiedComponent": {
+            "mode": "zero-only",
+            "formula": null,
+            "minimum": "0",
+            "maximum": "0",
+            "minimumSign": "zero",
+            "maximumSign": "zero",
+            "positiveSettlementActions": [],
+            "negativeSettlementActions": []
+          }
+        }
+      },
+      "executionEvent": "FeeDistributed(uint256,uint256)"
+    },
+    "postReturnDeltaAccounting": {
+      "afterSwap": {
+        "used": true,
+        "returnedDeltaShape": "unspecified-currency-int128",
+        "positiveMeaning": "hook-credit-caller-debit",
+        "negativeMeaning": "hook-debt-caller-credit",
+        "backingSource": "The executed ETH amount already held by PoolManager for this swap.",
+        "callerDeltaEquation": "protocol-delta-minus-hook-delta",
+        "componentPolicies": {
+          "unspecified": {
+            "mode": "positive-only",
+            "formula": "fee = 1% of the gross ETH leg, inclusive, with the sub-wei remainder carried across calls in feeCarryIn or feeCarryOut.",
+            "minimum": "Zero, which occurs when the computed inclusive fee rounds down to nothing for a dust-sized swap and the remainder is carried instead.",
+            "maximum": "One percent of the gross ETH leg of the swap, which is the immutable product-level cap declared in maximumHundredthsOfBip.",
+            "minimumSign": "zero",
+            "maximumSign": "positive",
+            "positiveSettlementActions": [
+              {
+                "order": 1,
+                "actor": "hook",
+                "operation": "take",
+                "currency": "unspecified",
+                "assetKind": "native",
+                "deltaOwner": "hook",
+                "deltaEffect": "negative",
+                "counterparty": "PoolManager",
+                "authorizationRule": "Only reachable inside the hook's own PoolManager unlock callback, which authenticates msg.sender as PoolManager.",
+                "msgValueRule": "Native ETH already held by PoolManager for this swap; the hook attaches no additional msg.value.",
+                "amountRule": "Exactly the computed inclusive fee, which is at most one percent of the gross ETH leg of this swap.",
+                "completionDeadline": "before-hook-return"
+              }
+            ],
+            "negativeSettlementActions": []
+          },
+          "currency0": null,
+          "currency1": null
+        },
+        "bounds": "At most 1% of the executed gross ETH amount.",
+        "rounding": "The fee is floored against the executed unspecified ETH amount and its sub-wei remainder is carried, so repeated small swaps accrue the same total as one equivalent large swap.",
+        "slippageOrMinimums": "Bounded by the caller's own minEthOut or maxEthIn and deadline.",
+        "failureRule": "Revert the swap.",
+        "executionEvent": "FeeDistributed(uint256,uint256)"
+      },
+      "afterAddLiquidity": {
+        "used": false,
+        "returnedDeltaShape": null,
+        "positiveMeaning": null,
+        "negativeMeaning": null,
+        "backingSource": null,
+        "callerDeltaEquation": null,
+        "componentPolicies": {
+          "unspecified": null,
+          "currency0": null,
+          "currency1": null
+        },
+        "bounds": null,
+        "rounding": null,
+        "slippageOrMinimums": null,
+        "failureRule": null,
+        "executionEvent": null
+      },
+      "afterRemoveLiquidity": {
+        "used": false,
+        "returnedDeltaShape": null,
+        "positiveMeaning": null,
+        "negativeMeaning": null,
+        "backingSource": null,
+        "callerDeltaEquation": null,
+        "componentPolicies": {
+          "unspecified": null,
+          "currency0": null,
+          "currency1": null
+        },
+        "bounds": null,
+        "rounding": null,
+        "slippageOrMinimums": null,
+        "failureRule": null,
+        "executionEvent": null
+      }
+    },
+    "erc6909Claims": {
+      "used": false,
+      "currencyIdDerivation": null,
+      "claimBalanceScope": null,
+      "poolIdIncludedInClaimId": null,
+      "owner": null,
+      "operatorPolicy": null,
+      "mintFlow": null,
+      "burnFlow": null,
+      "takeSettleFlow": null,
+      "liabilityKeys": null,
+      "liabilityKeyDimensions": [],
+      "crossPoolNetting": null,
+      "transferPolicy": null,
+      "redemption": null,
+      "roundingDust": null,
+      "aggregateSolvencyEquation": null
+    },
+    "nestedActions": {
+      "used": true,
+      "directPoolManagerCalls": true,
+      "routerCalls": false,
+      "allowedActions": [
+        "swap",
+        "settle",
+        "take"
+      ],
+      "samePoolPolicy": "The hook swaps only against its own canonical pool, and charges the identical inclusive fee internally on those paths.",
+      "crossPoolPolicy": "Forbidden. The hook only ever calls PoolManager for its own canonical PoolKey, and _guardPool rejects any other PoolId.",
+      "callbackSuppression": "v4 skips a hook's own callbacks when the hook is the swapper, so hook-initiated swaps do not re-enter _beforeSwap or _afterSwap.",
+      "directCallbackBehavior": "self-call-hook-callbacks-skipped",
+      "routerCallbackBehavior": null,
+      "maximumDepth": 1,
+      "stateCommitOrder": "Effects are written before any external interaction on every path.",
+      "transientDeltaOwner": "The hook owns every transient delta it opens and closes all of them before the unlock callback returns.",
+      "syncInterleaving": "sync is called immediately before each settle of the ERC-20 leg and is never interleaved across currencies.",
+      "slippageAggregation": "Each batched action is bounded once at the entry point by maxEthIn, minEthOut or minCount plus a deadline; the batch settles as a single net ETH amount checked against that bound.",
+      "failureAtomicity": "The whole unlock callback reverts on any failure."
+    }
+  },
+  "noHookArchitecture": null,
+  "tokenMechanics": null,
+  "valueFlows": [
+    {
+      "id": "swap-buy",
+      "action": "swap",
+      "asset": "eth",
+      "from": "caller",
+      "to": "canonical pool and hook inventory",
+      "amountRule": "The caller sends native ETH up to maxEthIn; the curve sets the price and unspent ETH is refunded in the same transaction.",
+      "settlement": "The hook settles the ETH leg with PoolManager inside unlock, takes 1% inclusive as its own delta, and mints one ERC-721 piece per 1e18 SHARD received.",
+      "failure": "Revert the entire unlock callback; no piece is minted and no ETH is retained."
+    },
+    {
+      "id": "swap-sell",
+      "action": "swap",
+      "asset": "eth",
+      "from": "canonical pool",
+      "to": "caller",
+      "amountRule": "The caller returns pieces and receives at least minEthOut; the curve sets the price.",
+      "settlement": "The hook burns or archives the piece, swaps the backing SHARD for ETH, takes 1% inclusive, and transfers the remainder to the caller.",
+      "failure": "Revert the entire unlock callback; the caller keeps the piece."
+    },
+    {
+      "id": "swap-fee",
+      "action": "fee",
+      "asset": "eth",
+      "from": "swap volume",
+      "to": "holders, builder and Programmable",
+      "amountRule": "A flat 1.00% inclusive charge on the gross ETH leg of every successful swap of the canonical PoolKey, split 0.80% holders, 0.10% builder, 0.10% Programmable, with sub-wei remainders carried across calls.",
+      "settlement": "Accrued as a claimable liability inside the hook. Holders withdraw with claim(); the builder and Programmable each withdraw only their own balance through separately authorized pull calls.",
+      "failure": "Revert the swap. There is no path that collects the fee without accruing it."
+    },
+    {
+      "id": "redeem",
+      "action": "redeem",
+      "asset": "launched-token",
+      "from": "caller",
+      "to": "hook inventory",
+      "amountRule": "Exactly 1e18 SHARD redeems for exactly one piece, with no price dependency.",
+      "settlement": "The hook takes the SHARD into inventory and transfers the piece to the caller.",
+      "failure": "Revert; no partial redemption is possible."
+    }
+  ],
+  "authorities": [
+    {
+      "role": "Builder fee recipient",
+      "controller": "0xceeBB3A6543CeBEB2ED66963897A0abEA52A50cC",
+      "capabilities": [
+        "Rotate its own future 0.10% builder share via setBuilderFeeRecipient",
+        "Claim its own accrued builder balance via claimBuilderFees"
+      ],
+      "mutable": true,
+      "delay": "None. The rotation takes effect immediately and emits BuilderFeeRecipientChanged.",
+      "userExitImpact": "None. This role cannot touch accrued Programmable fees, accrued holder fees, pool liquidity, NFT inventory or any user position, and cannot pause, upgrade or block a holder from selling or redeeming."
+    },
+    {
+      "role": "Programmable fee recipient",
+      "controller": "0x4957f49620AFf3Adbbe8195a4f633E49cc93376c",
+      "capabilities": [
+        "Claim its own accrued 0.10% share at any time via claimLauncherFees"
+      ],
+      "mutable": false,
+      "delay": "None, and the address itself is a compile-time constant that cannot be changed by anyone.",
+      "userExitImpact": "None. This role cannot touch any other balance, cannot alter the curve or liquidity, and cannot block a holder from selling or redeeming."
+    }
+  ],
+  "dependencies": {
+    "onchain": [
+      {
+        "id": "uniswap-v4-pool-manager",
+        "name": "Uniswap v4 PoolManager",
+        "kind": "protocol",
+        "repository": "https://github.com/Uniswap/v4-core",
+        "revision": null,
+        "packageVersion": null,
+        "license": "MIT / BUSL-1.1 as published by Uniswap",
+        "sourceProvenance": "verified-explorer-source",
+        "deploymentRecordId": null,
+        "chainAddress": "0x000000000004444c5dc75cB358380D2e3dE08A90",
+        "runtimeHash": null,
+        "deploymentEvidencePath": null,
+        "trust": "Canonical Ethereum mainnet deployment. The hook authenticates every callback against this exact address and rejects any other caller.",
+        "failure": "If PoolManager were unavailable the market is inert; no value can be extracted by anyone and the 1:1 backing is unaffected.",
+        "fallback": "None by design. There is no alternative venue and no migration path."
+      }
+    ],
+    "offchain": []
+  },
+  "operations": {
+    "keeper": {
+      "required": false,
+      "actor": null,
+      "action": null,
+      "cadence": null,
+      "authentication": null,
+      "funding": null,
+      "failure": null,
+      "fallback": null
+    },
+    "oracle": {
+      "required": false,
+      "actor": null,
+      "action": null,
+      "cadence": null,
+      "authentication": null,
+      "funding": null,
+      "failure": null,
+      "fallback": null
+    },
+    "monitoring": "No operator action is required for correctness. Recommended watch items are the FeeDistributed stream, the hook ETH balance against builderFeesAccrued plus launcherFeesAccrued plus the holder pool, and the conservation identity nft.totalSupply() + hookShardBalance/1e18 == 10000.",
+    "incidentResponse": "There is no pause, upgrade, admin or rescue path by design, so incident response is disclosure rather than intervention: publish the finding, and if it is exploitable report it privately first. The permanently locked liquidity and the 1:1 backing mean no operator can withdraw user value even in an incident."
+  },
+  "integration": {
+    "routerGeneration": null,
+    "routerDependencyId": null,
+    "permit2DependencyId": null,
+    "stateViewDependencyId": null,
+    "quoterDependencyId": null,
+    "sdkDependencies": [],
+    "routerActionProfile": {
+      "routerVersionExplicit": null,
+      "universalRouterCommand": null,
+      "v4Actions": [],
+      "settlementMode": null,
+      "permit2Mode": null,
+      "finalSwapDeltaValidated": null
+    },
+    "sdkSafetyProfile": {
+      "packageRootImportsOnly": null,
+      "hookedQuoteSource": null,
+      "localHookedPoolMathDisabled": null,
+      "hookDataParity": null,
+      "multiHopHookDataMode": null,
+      "perHopPriceBounds": null,
+      "slippageSemantics": null,
+      "deprecatedLiquidityActionsDisabled": null
+    },
+    "appSourcePaths": [],
+    "integrationTestPaths": [],
+    "quoteExecutionParity": null,
+    "swapModes": [
+      "zeroForOne-exactInput",
+      "zeroForOne-exactOutput",
+      "oneForZero-exactInput",
+      "oneForZero-exactOutput"
+    ],
+    "partialFills": "Hook-initiated batch actions never partially fill: they revert PartialFillNotSupported. A third-party swap routed straight through PoolManager may partially fill at its price limit.",
+    "slippage": "Every external hook entry point takes an explicit bound: maxEthIn for buys, minEthOut for sells, minCount for buyMax. The hook reverts rather than settling outside it.",
+    "deadline": "Every external hook entry point takes an absolute unix deadline and reverts Expired when block.timestamp exceeds it.",
+    "permit2": "Not used. The ETH leg is native value and SHARD approvals use plain ERC-20 allowance.",
+    "stateReads": "Clients read slot0 and liquidity through the canonical v4 StateView and quote through the canonical V4Quoter; the hook exposes claimable(), lowestAvailableId() and the accrued fee counters directly.",
+    "events": [
+      "ShardLaunched(address,address,address,bytes32,bytes32,address,address,bytes32)",
+      "Initialised(bytes32,uint128,uint128,uint256)",
+      "FeeDistributed(uint256,uint256)",
+      "FeeEscrowed(uint256)",
+      "EscrowReleased(uint256)",
+      "Claimed(address,uint256)",
+      "BuilderFeesClaimed(address,uint256)",
+      "LauncherFeesClaimed(address,uint256)",
+      "BuilderFeeRecipientChanged(address,address)",
+      "Donated(address,uint256)",
+      "Transfer(address,address,uint256)"
+    ],
+    "routingAndDiscoverability": {
+      "routingMode": "not-planned",
+      "allowlistTriggers": {
+        "usesDeltaFlag": true,
+        "addressStartsWith91": false,
+        "targetsMajorPair": false,
+        "permissionedPool": false
+      },
+      "uniswapRoutingStatus": "not-applicable",
+      "hookRegistryStatus": "not-submitted",
+      "customHookDataRequired": false,
+      "standardRouterCompatible": true,
+      "permissionedRouting": {
+        "required": false,
+        "minimumRouterGeneration": null,
+        "adapterCurrencyUsed": null,
+        "allowedWrapperBindings": null,
+        "positionManagerBinding": null,
+        "routingAllowlistRequiredPerChain": null
+      },
+      "sourcePaths": [],
+      "testPaths": []
+    },
+    "dataReconstruction": {
+      "mode": "events-with-confirmed-reads",
+      "eventCoverage": "ShardLaunched binds the deployed addresses; Initialised marks the pool open; ERC-721 Transfer reconstructs acquisition and release of every piece (from==nft is an acquire, to==nft is a release); FeeDistributed carries every three-way split; FeeClaimed carries every holder withdrawal. Buy and redeem are indistinguishable from Transfer alone, so each Transfer is correlated with the PoolManager Swap in the same transaction.",
+      "cursor": "block-number-transaction-index-log-index",
+      "startBlockPolicy": "Indexing starts at the block of the ShardLaunched event for the exact factory address; nothing before that block is relevant to this collection.",
+      "finalityDepth": 12,
+      "reorgPolicy": "State is written only below the finality depth. Blocks above it are held in a pending view and are re-derived if the canonical head changes; no reorg can leave a partially applied piece transfer or fee split.",
+      "backfillPolicy": "Complete historical replay from the launch block using bounded log ranges, and the result is verified against confirmed contract reads of lowestAvailableId, totalSupply and the accrued fee counters.",
+      "checkpointPolicy": "The cursor is persisted after each finalized range so a restart resumes from the last finalized position rather than rescanning from the launch block.",
+      "freshnessTargetSeconds": 30,
+      "staleAfterSeconds": 120,
+      "freshnessMeasurement": "Measured as the wall-clock gap between the newest indexed block timestamp and the current chain head timestamp.",
+      "reconciliation": "The invariant nft.totalSupply() + hookShardBalance/1e18 == 10000 is checked against confirmed reads on every finalized range, and any divergence stops the indexer rather than serving inconsistent state.",
+      "reserveReconstruction": {
+        "used": true,
+        "balanceSources": [
+          "Hook native ETH balance read at a confirmed block",
+          "Hook SHARD balance read at a confirmed block",
+          "ERC-721 totalSupply read at a confirmed block"
+        ],
+        "liabilitySources": [
+          "builderFeesAccrued read at a confirmed block",
+          "launcherFeesAccrued read at a confirmed block",
+          "Unclaimed holder fees derived from FeeDistributed less FeeClaimed"
+        ],
+        "attributionKeys": [
+          "poolId",
+          "currency",
+          "beneficiary"
+        ],
+        "solvencyEquation": "hook ETH balance >= builderFeesAccrued + launcherFeesAccrued + unclaimed holder fees, and nft.totalSupply() + hookShardBalance/1e18 == 10000.",
+        "poolLiquidityTreatment": "excluded-from-hook-reserves",
+        "donationAndDustPolicy": "Donations are credited entirely to the holder accumulator and never split. Sub-wei dust is carried in feeCarryIn, feeCarryOut, operatorFeeRemainder, operatorSplitParity, dustScaled and releasedDustScaled rather than discarded.",
+        "reconciliation": "Derived balances are compared against confirmed reads on every finalized range and a divergence halts the indexer."
+      },
+      "sourcePaths": [
+        "src/ShardHookV1.sol",
+        "src/ShardNFTV1.sol",
+        "src/ShardFeeDistributorV1.sol"
+      ],
+      "testPaths": [
+        "test/ShardHookMarketV1.t.sol",
+        "test/ShardFeeSplitV1.t.sol",
+        "test/ShardNFTV1.t.sol"
+      ]
+    },
+    "platformHandoff": {
+      "intended": true,
+      "websiteRegistryPath": null,
+      "uiSourcePaths": [],
+      "apiSourcePaths": [],
+      "indexerSourcePaths": [],
+      "testPaths": [],
+      "reviewStatus": "pending-maintainer-review",
+      "maintainerReviewRequired": true,
+      "selfApproval": false,
+      "availabilityClaimed": false,
+      "handoffNotes": "A trader surface exists and reads the hook directly. Buy and redeem are indistinguishable from ERC-721 Transfer alone, so the indexer correlates each Transfer with the PoolManager Swap in the same transaction. claimable() under-reports for pure holders, so accrued fees are computed offchain from FeeDistributed and Transfer history."
+    }
+  },
+  "projectSurfaces": [
+    {
+      "id": "canonical-pool-model",
+      "kind": "onchain-contract",
+      "name": "Canonical pool model",
+      "summary": "The canonical launch token, PoolKey and optional hook behavior reviewed as one onchain project boundary.",
+      "executionBoundary": "onchain",
+      "capabilityIds": [
+        "canonical-pool-state"
+      ],
+      "authorityRefs": [
+        "Builder fee recipient",
+        "Programmable fee recipient"
+      ],
+      "valueFlowRefs": [
+        "swap-buy",
+        "swap-sell",
+        "swap-fee",
+        "redeem"
+      ],
+      "assetRefs": [
+        "eth",
+        "launched-token"
+      ],
+      "sourcePaths": [
+        "src/ShardHookV1.sol",
+        "src/ShardLaunchFactoryV1.sol",
+        "src/ShardFeeDistributorV1.sol",
+        "src/ShardNFTV1.sol",
+        "src/ShardTokenV1.sol",
+        "src/GeometricRendererV1.sol"
+      ],
+      "testPaths": [
+        "test/ShardHookMarketV1.t.sol",
+        "test/ShardFeeSplitV1.t.sol",
+        "test/ShardLaunchSequenceV1.t.sol",
+        "test/ShardHookAttackV1.t.sol"
+      ],
+      "schemaPaths": [],
+      "evidencePaths": [],
+      "exposure": {
+        "movesValue": true,
+        "usesSignatures": false,
+        "makesExternalCalls": true,
+        "holdsCustody": true,
+        "handlesPii": false,
+        "usesGeolocation": false,
+        "usesSecrets": false
+      },
+      "profiles": {
+        "authority": {
+          "status": "applicable",
+          "summary": "PoolManager callback authentication and the declared launch authorities bound in this submission govern the exact onchain boundary.",
+          "controls": [
+            "Authenticate every hook callback through the exact PoolManager and declared pool-admission rule."
+          ],
+          "evidenceRefs": []
+        },
+        "valueFlow": {
+          "status": "applicable",
+          "summary": "Native ETH and SHARD move along the locked curve on every buy, sell and redeem, and a 1% inclusive fee is split three ways.",
+          "controls": [
+            "Explicit maxEthIn, minEthOut or minCount bound plus an absolute deadline on every entry point",
+            "Unspent ETH refunded in the same transaction",
+            "MAX_BATCH cap of 50 pieces per action and 50e18 SHARD per swap"
+          ],
+          "evidenceRefs": []
+        },
+        "sourceOfTruth": {
+          "status": "applicable",
+          "summary": "Confirmed PoolManager and contract state for the exact chain and PoolId is the authoritative source of truth.",
+          "controls": [
+            "Key every state read and emitted event by the exact chain, model revision and PoolId."
+          ],
+          "evidenceRefs": []
+        },
+        "signaturesReplay": {
+          "status": "not-applicable",
+          "summary": "The starter surface consumes no model-specific signed message or signed offchain payload.",
+          "controls": [],
+          "evidenceRefs": []
+        },
+        "externalCalls": {
+          "status": "applicable",
+          "summary": "The hook calls PoolManager, the SHARD ERC-20, the ERC-721 and the renderer, and sends native ETH to callers.",
+          "controls": [
+            "nonReentrant on every external entry point",
+            "Effects written before every interaction",
+            "ERC-20 return values checked and reverted on false",
+            "Renderer reached only by staticcall, which cannot write state"
+          ],
+          "evidenceRefs": []
+        },
+        "custody": {
+          "status": "applicable",
+          "summary": "The hook custodies the SHARD backing every minted piece, the permanently locked positions and accrued ETH fees until they are claimed.",
+          "controls": [
+            "1:1 backing invariant nft.totalSupply() + hookShardBalance/1e18 == 10000",
+            "Liquidity permanently locked with no withdrawal path for any party",
+            "Separate pull-only claim paths that cannot net or sweep another balance",
+            "No admin, pause, upgrade or rescue function anywhere in the system"
+          ],
+          "evidenceRefs": []
+        },
+        "piiGeolocation": {
+          "status": "not-applicable",
+          "summary": "The onchain starter surface collects no private identity data or precise user geolocation.",
+          "controls": [],
+          "evidenceRefs": []
+        },
+        "secretBoundary": {
+          "status": "not-applicable",
+          "summary": "The onchain starter surface assumes no secret can remain confidential in contract state or calldata.",
+          "controls": [],
+          "evidenceRefs": []
+        },
+        "sourceTestSchema": {
+          "status": "applicable",
+          "summary": "The implementation manifest binds the exact source, tests, compiler input and specification reviewed for this boundary.",
+          "controls": [
+            "Bind prototype source and tests to implementation paths and include every imported executable byte in the review target."
+          ],
+          "evidenceRefs": []
+        },
+        "failureRecovery": {
+          "status": "applicable",
+          "summary": "An invalid callback or state transition reverts atomically and does not block the separately declared user exit path.",
+          "controls": [
+            "Test dependency failure, callback revert and recovery without partial settlement or trapped user funds."
+          ],
+          "evidenceRefs": []
+        }
+      },
+      "signedDataSource": {
+        "used": false,
+        "signerAuthorityRefs": [],
+        "signatureScheme": null,
+        "payloadSchemaPath": null,
+        "freshnessRule": null,
+        "replayProtection": null,
+        "onchainVerifierSurfaceId": null
+      },
+      "onchainOracleVerifier": {
+        "used": false,
+        "verifiedSourceSurfaceIds": [],
+        "verificationRule": null,
+        "freshnessRule": null,
+        "replayProtection": null,
+        "failureRule": null
+      }
+    }
+  ],
+  "projectCapabilities": [
+    {
+      "id": "canonical-pool-state",
+      "kind": "state-observation",
+      "summary": "Read and update only the declared canonical PoolId state without adding value custody or an offchain trust dependency.",
+      "surfaceIds": [
+        "canonical-pool-model"
+      ],
+      "securityTriggers": {
+        "authority": true,
+        "valueFlow": true,
+        "sourceOfTruth": true,
+        "signaturesReplay": false,
+        "externalCalls": true,
+        "custody": true,
+        "piiGeolocation": false,
+        "secretBoundary": false,
+        "sourceTestSchema": true,
+        "failureRecovery": true
+      },
+      "requiredProfiles": [
+        "authority",
+        "custody",
+        "external-calls",
+        "failure-recovery",
+        "source-of-truth",
+        "source-test-schema",
+        "value-flow"
+      ]
+    }
+  ],
+  "capabilities": {
+    "externalCalls": {
+      "used": true,
+      "targets": [
+        "Uniswap v4 PoolManager (unlock, swap, modifyLiquidity, settle, take, sync)",
+        "ShardTokenV1 ERC-20 (transfer, balanceOf)",
+        "ShardNFTV1 ERC-721 (mint, transfer, archive)",
+        "GeometricRendererV1 (staticcall from tokenURI)",
+        "Caller address (native ETH refund and fee payout)"
+      ],
+      "callSites": [
+        "ShardHookV1 unlock callback",
+        "ShardHookV1 buy, sell, redeem and claim entry points",
+        "ShardFeeDistributorV1 claim paths",
+        "ShardNFTV1.tokenURI"
+      ],
+      "reentrancyPolicy": "Every external entry point carries nonReentrant, and every path writes its effects before any interaction. Renderer calls are staticcall, which cannot write state.",
+      "stateDriftPolicy": "All pool state is read inside the same unlock callback that acts on it, so no read can go stale between observation and use.",
+      "returnValuePolicy": "ERC-20 transfer return values are checked and revert TokenTransferFailed on false. Native ETH sends are checked. No return value is ignored.",
+      "failureAtomicity": "Any failed external call reverts the entire transaction; there is no swallow-and-continue path."
+    },
+    "permissionedAsset": {
+      "used": false,
+      "officialUniswapPermissionedPool": null,
+      "issuer": null,
+      "jurisdiction": null,
+      "legalDocuments": [],
+      "underlyingClaim": null,
+      "custodian": null,
+      "adapter": null,
+      "hooks": null,
+      "positionManager": null,
+      "swapEligibility": null,
+      "liquidityEligibility": null,
+      "positionTransferability": null,
+      "pauseFreezeUnwind": null,
+      "redemption": null,
+      "routingLimitations": null
+    },
+    "oracle": {
+      "used": false,
+      "source": null,
+      "value": null,
+      "deployment": null,
+      "runtimeHash": null,
+      "decimals": null,
+      "heartbeatSeconds": null,
+      "maxAgeSeconds": null,
+      "observationType": null,
+      "windowSeconds": null,
+      "minimumAnswer": null,
+      "maximumAnswer": null,
+      "maximumDeviation": null,
+      "roundChecks": null,
+      "manipulationResistance": null,
+      "governance": null,
+      "fallback": null,
+      "maxFallbackAgeSeconds": null,
+      "failureRule": null
+    },
+    "keeper": {
+      "used": false,
+      "executionMode": null,
+      "minIntervalSeconds": null,
+      "maxDelaySeconds": null,
+      "permissionlessFallbackAfterSeconds": null,
+      "idempotencyKey": null,
+      "duplicateBehavior": null,
+      "lastProcessedState": null,
+      "boundedWork": null,
+      "maxItems": null,
+      "retryPolicy": null,
+      "zeroWorkBehavior": null,
+      "fundingSource": null,
+      "minimumGasRunway": null,
+      "alertThreshold": null,
+      "maximumGas": null,
+      "failureImpact": null,
+      "userExitIndependent": null,
+      "poolBinding": null,
+      "slippage": null,
+      "deadline": null,
+      "mevPolicy": null
+    },
+    "proof": {
+      "used": false,
+      "proofSystem": null,
+      "circuitRevision": null,
+      "verifyingKeyHash": null,
+      "verifierAddress": null,
+      "runtimeHash": null,
+      "setupType": null,
+      "setupProvenance": null,
+      "publicInputs": [],
+      "domainBindings": {
+        "chainId": null,
+        "verifyingContract": null,
+        "modelVersion": null,
+        "pool": null,
+        "action": null,
+        "actorOrRecipient": null,
+        "amountBounds": null,
+        "epochOrDeadline": null
+      },
+      "replayMode": null,
+      "nullifierScope": null,
+      "nullifierDerivation": null,
+      "nullifierStorage": null,
+      "atomicSpentCheck": null,
+      "resetPolicy": null,
+      "maximumProofBytes": null,
+      "maximumVerificationGas": null,
+      "verifierAuthority": null,
+      "failureRule": null,
+      "privacyClaim": null,
+      "metadataLeakage": null
+    },
+    "crossChain": {
+      "used": false,
+      "direction": null,
+      "localBridgeDependencyId": null,
+      "localBridgeAddress": null,
+      "source": {
+        "network": {
+          "namespace": null,
+          "reference": null
+        },
+        "domain": null,
+        "authenticatedSender": {
+          "encoding": null,
+          "value": null,
+          "canonicalizationRule": null
+        }
+      },
+      "destination": {
+        "network": {
+          "namespace": null,
+          "reference": null
+        },
+        "domain": null,
+        "receiver": {
+          "encoding": null,
+          "value": null,
+          "canonicalizationRule": null
+        }
+      },
+      "message": {
+        "identifierDerivation": null,
+        "nonceDerivation": null,
+        "nonceScope": null,
+        "customNonceRule": null,
+        "payloadHashRule": null,
+        "idempotencyKeyRule": null,
+        "idempotencyStorage": null,
+        "atomicConsumption": null,
+        "duplicateBehavior": null,
+        "domainBindings": {
+          "localBridgeDependencyId": null,
+          "sourceNetwork": null,
+          "sourceDomain": null,
+          "sourceSender": null,
+          "destinationNetwork": null,
+          "destinationDomain": null,
+          "destinationReceiver": null,
+          "modelId": null,
+          "poolId": null,
+          "action": null,
+          "payloadHash": null,
+          "timestampOrExpiry": null,
+          "messageId": null,
+          "nonce": null
+        }
+      },
+      "finality": {
+        "mode": null,
+        "minimumSourceConfirmations": null,
+        "challengePeriodSeconds": null,
+        "attestationRule": null,
+        "reorgBehavior": null,
+        "customFinalityRule": null
+      },
+      "ordering": {
+        "mode": null,
+        "sequenceKey": null,
+        "outOfOrderBehavior": null,
+        "maximumPendingMessages": null,
+        "queueOverflowBehavior": null,
+        "pendingMessageExpirySeconds": null,
+        "cleanupRule": null,
+        "releaseRule": null
+      },
+      "staleness": {
+        "timestampSource": null,
+        "customTimestampRule": null,
+        "maximumMessageAgeSeconds": null,
+        "maximumFutureSkewSeconds": null,
+        "staleMessageBehavior": null
+      },
+      "failureBehavior": null,
+      "failureRule": null,
+      "fallback": {
+        "mode": null,
+        "authority": null,
+        "rule": null
+      },
+      "quarantine": {
+        "used": null,
+        "storageRule": null,
+        "maximumEntries": null,
+        "entryExpirySeconds": null,
+        "overflowBehavior": null,
+        "cleanupRule": null,
+        "releaseMode": null,
+        "releaseRule": null,
+        "releaseAuthority": null,
+        "atomicRelease": null
+      }
+    },
+    "externalLiquidity": {
+      "used": true,
+      "custody": "PoolManager custodies the two positions; the hook is their owner and holds the SHARD backing every minted piece plus accrued ETH fees.",
+      "ownership": "The hook owns both positions and no external party has any claim on them. There are no LP shares and no depositors.",
+      "shareAccounting": "None. Liquidity is not shared, tokenised or redeemable. The only per-user accounting is the per-piece fee accumulator, which tracks fee entitlement rather than liquidity.",
+      "solvencyEquation": "nft.totalSupply() + hookShardBalance/1e18 == 10000, and hook ETH balance >= builderFeesAccrued + launcherFeesAccrued + unclaimed holder fees.",
+      "lossAllocation": "There are no external liquidity providers, so there is no impermanent loss to allocate. Price movement is borne by piece holders through the mark on their own pieces.",
+      "donationPolicy": "donate() sends ETH straight to the holder accumulator and is deliberately excluded from the three-way split, because a gift to holders is not swap volume.",
+      "exitPath": "Liquidity has no exit path by design and is never withdrawable. Piece holders exit by selling their piece back to the curve.",
+      "dependencyFailure": "PoolManager is the only dependency; if it were unavailable the market is inert and no value can be extracted by anyone."
+    },
+    "asyncSwap": {
+      "used": false,
+      "supportedExactness": null,
+      "custody": null,
+      "fillRule": null,
+      "partialFillRule": null,
+      "cancellation": null,
+      "expiry": null,
+      "refund": null,
+      "queueBound": null,
+      "liveness": null,
+      "failureRule": null
+    },
+    "customCurve": {
+      "used": true,
+      "invariant": "Every piece is backed 1:1: nft.totalSupply() + hookShardBalance/1e18 == MAX_NFTS (10,000) at every point outside a single unlock callback. 1e18 SHARD always redeems for exactly one piece regardless of price.",
+      "domain": "Prices between tick -887220 and tick 69060, with the concentrated band from tick 22980 to 69060. Piece ids 1 to 10,000. A single swap may move at most 50e18 SHARD.",
+      "rounding": "The inclusive fee rounds in the protocol's favour and carries the sub-wei remainder in feeCarryIn and feeCarryOut so no value is lost across calls. Exact-input divides by 10,000 and exact-output grosses up by 9,900. The per-piece holder accumulator scales by ACC_PRECISION and carries its own dust.",
+      "monotonicity": "Price is strictly non-decreasing in cumulative pieces sold and strictly non-increasing in cumulative pieces returned; the curve is the standard Uniswap v4 concentrated-liquidity curve over two fixed positions.",
+      "discontinuities": "One liquidity discontinuity at tick 22980 where the concentrated band ends and only the full-range position remains. Nothing else is discontinuous.",
+      "inverse": "Selling reverses buying along the same two positions, less the 1% inclusive fee charged in each direction.",
+      "differentialReference": "There is no bespoke pricing function. Pricing is delegated entirely to Uniswap v4 concentrated-liquidity math over two immutable positions; the hook only adds an inclusive fee and an ERC-721 inventory on top.",
+      "failureRule": "Revert the entire unlock callback. Hook-initiated actions additionally revert PartialFillNotSupported rather than settling a partial fill."
+    }
+  },
+  "capabilityExtensions": [],
+  "tokenBehaviorExtensions": [],
+  "security": {
+    "usesTxOrigin": false,
+    "userControlledDelegatecall": false,
+    "arbitraryExecution": false,
+    "unboundedCriticalLoop": false,
+    "ignoredCallResults": false,
+    "hiddenControls": false,
+    "assumesOnchainSecrecy": false,
+    "bypassesHookAddressValidation": false,
+    "signatureScheme": {
+      "used": false,
+      "standard": null,
+      "nonce": null,
+      "deadline": null,
+      "chain": null,
+      "verifyingContract": null,
+      "action": null,
+      "parameters": null,
+      "erc1271": null
+    }
+  },
+  "implementation": {
+    "sourcePaths": [
+      "src/ShardHookV1.sol",
+      "src/ShardLaunchFactoryV1.sol",
+      "src/ShardFeeDistributorV1.sol",
+      "src/ShardNFTV1.sol",
+      "src/ShardTokenV1.sol",
+      "src/GeometricRendererV1.sol",
+      "src/ShardConstantsV1.sol",
+      "src/ShardErrorsV1.sol",
+      "src/ShardSwapRouterV1.sol",
+      "src/ShardFeeForwarderV1.sol"
+    ],
+    "testPaths": [
+      "test/ShardArtifactManifestV1.t.sol",
+      "test/ShardFeeDistributorV1.t.sol",
+      "test/ShardFeeDonationV1.t.sol",
+      "test/ShardFeeSplitV1.t.sol",
+      "test/ShardHookAttackV1.t.sol",
+      "test/ShardHookBatchV1.t.sol",
+      "test/ShardHookExhaustionV1.t.sol",
+      "test/ShardHookFeesV1.t.sol",
+      "test/ShardHookLiquidityV1.t.sol",
+      "test/ShardHookMarketV1.t.sol",
+      "test/ShardLaunchFactoryV1.t.sol",
+      "test/ShardLaunchSequenceV1.t.sol",
+      "test/ShardNFTV1.t.sol",
+      "test/ShardScaffoldV1.t.sol",
+      "test/ShardSwapRouterV1.t.sol",
+      "test/ShardTokenV1.t.sol",
+      "test/ShardV1MainnetFork.t.sol",
+      "test/ShardWiringV1.t.sol",
+      "test/utils/ShardLaunchLib.sol"
+    ],
+    "compilerBuildInfoPaths": [],
+    "githubActionsRunIds": [],
+    "specificationPath": "spec/shards-v1.json",
+    "testEvidencePath": null,
+    "dependencyLockPath": "scripts/bootstrap-deps.sh",
+    "feeConformanceManifestPath": null,
+    "gateStatusPath": null,
+    "reviewTargetPath": null,
+    "runtimeAssetManifestPath": null
+  },
+  "risk": {
+    "dimensions": {
+      "complexity": 3,
+      "customMath": 3,
+      "externalDependencies": 1,
+      "externalLiquidity": 1,
+      "valueAtRisk": 3,
+      "teamMaturity": 2,
+      "upgradeability": 1,
+      "autonomy": 1,
+      "priceImpact": 2
+    },
+    "rationales": {
+      "complexity": "One hook combines market making, ERC-721 inventory, an onchain renderer and a three-way fee accumulator; ShardHookV1 runs within 111 bytes of the EIP-170 limit.",
+      "customMath": "Custom inclusive-fee arithmetic with carried remainders in both directions, a per-piece fee accumulator with scaled dust carry, and CREATE2 salt mining for the permission mask.",
+      "externalDependencies": "Uniswap v4 PoolManager only. No oracle, keeper, bridge or offchain data source.",
+      "externalLiquidity": "None. Liquidity is seeded once from fixed supply and permanently locked; nothing external can add or remove it.",
+      "valueAtRisk": "User ETH transits the hook during a swap and accrued fees rest in the hook until claimed.",
+      "teamMaturity": "Single independent builder; prior deployment of the same architecture on a testnet and one non-Ethereum chain.",
+      "upgradeability": "No proxy, no admin, no upgrade path. Every contract is immutable after launch except the rotatable builder fee recipient.",
+      "autonomy": "Fully autonomous. No operator action is required for the market to function.",
+      "priceImpact": "A single swap may move at most MAX_BATCH (50) SHARD, which bounds per-transaction price impact."
+    },
+    "declaredTotal": 17,
+    "declaredTier": "high",
+    "featureTriggers": [
+      "autonomous",
+      "custom-accounting",
+      "custom-curve",
+      "custom-math",
+      "external-calls",
+      "external-liquidity",
+      "hook-held-liquidity",
+      "price-impact",
+      "project-custody",
+      "project-external-calls",
+      "project-value-flow",
+      "return-delta",
+      "upgradeable"
+    ]
+  },
+  "disclosures": [
+    "FEE REMAINDER SHAPE. roundingPolicy is a schema const and cannot express what this hook does. ShardFeeDistributorV1._distributeFee carries ONE combined operator remainder over the 20% builder-plus-Programmable cut for the pool lifetime, splitting it with a parity carry giving the odd wei to Programmable, not two independent remainders. Claims never reset it. Ten 9-wei fees accrue the same total as one 90-wei fee. Review requested on whether this meets the policy intent.",
+    "NO MINIMUM SWAP REVERT. programmableFee.accounting.minimumGrossQuoteUnits is a schema const set to the policy value of 1,000. The implementation does not enforce it and does not revert a positive gross ETH amount below 1,000 wei. Instead of rejecting dust swaps the carried remainder makes them accrue proportionally, so the platform entitlement is never floored to zero by splitting one swap into many. Maintainer review is requested on whether the carry is an acceptable substitute for the revert.",
+    "ZERO INITIAL ACTIVE LIQUIDITY. Active in-range liquidity is exactly zero immediately after the authorized launch call, measured on an Ethereum mainnet fork. The pool initialises at tick 69060, the upper bound of both permanently locked single-sided positions, so all 10,000e18 SHARD sits below the start price as asks and nothing is in range until the first buy. This is the backed full-consumption case: every SHARD in the pool is backed 1:1 by an ERC-721 piece in hook inventory.",
+    "PARTIAL FILL FEE SHARE. When ETH is the specified currency the fee is charged in beforeSwap on the requested size. If a third-party swap then stops at its price limit and only partially fills, that fee is a larger share of what actually executed, measured at 7,655 bps on a 1 ETH request that filled 0.013 ETH. It cannot be corrected in afterSwap. The hook's own entry points are unaffected because they revert PartialFillNotSupported rather than accepting a partial fill.",
+    "BUILDER RECIPIENT ROTATABLE. The 0.10% builder recipient is rotatable by the current builder through setBuilderFeeRecipient, which emits BuilderFeeRecipientChanged. The 0.10% Programmable recipient is an immutable constant and is not rotatable by anyone. The builder cannot touch accrued Programmable fees, accrued holder fees, pool liquidity or NFT inventory.",
+    "NO ADMIN, PAUSE OR UPGRADE. There is no proxy, no owner, no pause, no upgrade and no rescue path anywhere in the system. Liquidity is permanently locked and cannot be withdrawn by any party including the builder. The accepted cost is that a defect cannot be patched after launch.",
+    "SEED GRINDABILITY. Piece rarity is derived from blockhash, timestamp, recipient and a nonce at mint time, which a determined miner or builder could grind. This is disclosed rather than mitigated in V1; a commit-reveal scheme is the known fix and is deferred.",
+    "OPEN QUESTION. Does the combined operator remainder with a parity carry to Programmable satisfy the policy 1.1.0 requirement for independent cumulative platform and project remainders?",
+    "OPEN QUESTION. Is the carried remainder an acceptable substitute for reverting a positive gross quote amount below 1,000 wei, given that it preserves the entitlement rather than flooring it to zero?",
+    "OPEN QUESTION. pool.minimumInitialLiquidity declares the seeded position liquidity, but in-range active liquidity is zero at the initialization tick because the pool opens at the upper bound of both locked ranges. Which value should the launch executor verify?",
+    "OPEN QUESTION. The declared GitHub Actions run id must sit inside the very commit that triggered the run, which cannot converge with a push-triggered workflow. What is the intended ordering?"
+  ],
+  "unresolved": []
+}
