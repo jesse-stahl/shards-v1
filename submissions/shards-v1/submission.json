@@ -171,22 +171,22 @@
     "targetComponent": "shard-launch-factory-v1",
     "callDataFunction": "launch(bytes32,bytes32,bytes,(int24,int24,int24,uint160,address,string,string,string,string))",
     "callDataSourcePaths": [
-      "src/ShardLaunchFactoryV1.sol",
-      "script/LaunchShardsV1.s.sol"
+      "script/LaunchShardsV1.s.sol",
+      "src/ShardLaunchFactoryV1.sol"
     ],
     "hookConfigurationRule": "The factory mines the hook salt until the CREATE2 address carries exactly beforeInitialize, beforeSwap, afterSwap, beforeSwapReturnDelta and afterSwapReturnDelta (mask 0x20cc) and refuses to deploy on any other combination. It also pins keccak256 of the hook creation code at construction and rejects any other bytes.",
     "hookConfigurationSourcePaths": [
-      "src/ShardLaunchFactoryV1.sol",
-      "src/ShardHookV1.sol"
+      "src/ShardHookV1.sol",
+      "src/ShardLaunchFactoryV1.sol"
     ],
     "initialLiquidityRule": "The factory transfers the entire 10,000e18 fixed supply to the hook, which seeds two permanently locked single-sided positions inside one unlock callback: 3,000e18 across the full range and 7,000e18 in the concentrated band. Liquidity is never withdrawable. The pool initialises at tick 69060, the upper bound of both positions, so active in-range liquidity is zero until the first buy moves price down into the band.",
     "liquiditySourcePaths": [
       "src/ShardHookV1.sol"
     ],
     "testPaths": [
-      "test/ShardLaunchSequenceV1.t.sol",
-      "test/ShardLaunchFactoryV1.t.sol",
       "test/ShardHookLiquidityV1.t.sol",
+      "test/ShardLaunchFactoryV1.t.sol",
+      "test/ShardLaunchSequenceV1.t.sol",
       "test/ShardV1MainnetFork.t.sol"
     ],
     "nativeValueRule": "The launch call carries no native value; the pool is seeded entirely from the token side.",
@@ -302,15 +302,15 @@
     },
     "evidence": {
       "sourcePaths": [
+        "src/ShardConstantsV1.sol",
         "src/ShardFeeDistributorV1.sol",
-        "src/ShardHookV1.sol",
-        "src/ShardConstantsV1.sol"
+        "src/ShardHookV1.sol"
       ],
       "testPaths": [
-        "test/ShardFeeSplitV1.t.sol",
-        "test/ShardHookFeesV1.t.sol",
         "test/ShardFeeDistributorV1.t.sol",
-        "test/ShardFeeDonationV1.t.sol"
+        "test/ShardFeeDonationV1.t.sol",
+        "test/ShardFeeSplitV1.t.sol",
+        "test/ShardHookFeesV1.t.sol"
       ]
     }
   },
@@ -1021,13 +1021,13 @@
         "reconciliation": "Derived balances are compared against confirmed reads on every finalized range and a divergence halts the indexer."
       },
       "sourcePaths": [
+        "src/ShardFeeDistributorV1.sol",
         "src/ShardHookV1.sol",
-        "src/ShardNFTV1.sol",
-        "src/ShardFeeDistributorV1.sol"
+        "src/ShardNFTV1.sol"
       ],
       "testPaths": [
-        "test/ShardHookMarketV1.t.sol",
         "test/ShardFeeSplitV1.t.sol",
+        "test/ShardHookMarketV1.t.sol",
         "test/ShardNFTV1.t.sol"
       ]
     },
@@ -1070,18 +1070,18 @@
         "launched-token"
       ],
       "sourcePaths": [
+        "src/GeometricRendererV1.sol",
+        "src/ShardFeeDistributorV1.sol",
         "src/ShardHookV1.sol",
         "src/ShardLaunchFactoryV1.sol",
-        "src/ShardFeeDistributorV1.sol",
         "src/ShardNFTV1.sol",
-        "src/ShardTokenV1.sol",
-        "src/GeometricRendererV1.sol"
+        "src/ShardTokenV1.sol"
       ],
       "testPaths": [
-        "test/ShardHookMarketV1.t.sol",
         "test/ShardFeeSplitV1.t.sol",
-        "test/ShardLaunchSequenceV1.t.sol",
-        "test/ShardHookAttackV1.t.sol"
+        "test/ShardHookAttackV1.t.sol",
+        "test/ShardHookMarketV1.t.sol",
+        "test/ShardLaunchSequenceV1.t.sol"
       ],
       "schemaPaths": [],
       "evidencePaths": [],
@@ -1507,16 +1507,16 @@
   },
   "implementation": {
     "sourcePaths": [
-      "src/ShardHookV1.sol",
-      "src/ShardLaunchFactoryV1.sol",
-      "src/ShardFeeDistributorV1.sol",
-      "src/ShardNFTV1.sol",
-      "src/ShardTokenV1.sol",
       "src/GeometricRendererV1.sol",
       "src/ShardConstantsV1.sol",
       "src/ShardErrorsV1.sol",
+      "src/ShardFeeDistributorV1.sol",
+      "src/ShardFeeForwarderV1.sol",
+      "src/ShardHookV1.sol",
+      "src/ShardLaunchFactoryV1.sol",
+      "src/ShardNFTV1.sol",
       "src/ShardSwapRouterV1.sol",
-      "src/ShardFeeForwarderV1.sol"
+      "src/ShardTokenV1.sol"
     ],
     "testPaths": [
       "test/ShardArtifactManifestV1.t.sol",
