@@ -1,172 +1,160 @@
 # Shards threat model
 
-> Authoring scaffold: replace every instruction below with project-specific threats, controls, evidence, or an explicit
-> not-applicable reason. Do not retain the instructional prose in the completed artifact.
+Scope is the four deployed contracts and the one canonical PoolKey. Anything on an alternative pool, in a
+separate product repository, or in a third-party integration is out of scope and inherits none of these
+properties.
 
 ## Assets and value at risk
 
-List every stable asset id, token, ETH balance, PoolManager claim, share, LP position, proof, signature, liability, and
-entitlement that exists. Include valuable app or game state, service authority, oracle input, keeper funding, indexed
-state, and signing capability where declared, without recording secrets. State origin, custody, owner, exit,
-non-standard behavior, and issuer or upgrade control.
+| Asset | Where it sits | Who can move it |
+| --- | --- | --- |
+| Native ETH mid-swap | PoolManager, transiently | Only the hook, inside its own unlock callback |
+| Accrued holder fees | Hook balance | Only the holder, through `claim` |
+| Accrued builder fees | Hook balance | Only the current builder recipient |
+| Accrued Programmable fees | Hook balance | Only `0x4957f4…376c` |
+| SHARD backing minted pieces | Hook balance | Nobody. It is inventory, not a balance anyone can withdraw |
+| Both liquidity positions | PoolManager, owned by the hook | Nobody, ever. There is no removal path in the code |
 
-For every ERC-20 interaction, state whether false, no, or malformed returns, fee-on-transfer, rebasing, callbacks,
-pauses, and blocklists are supported or rejected. Reconcile requested, transferred, actually received, credited, and
-settled amounts rather than assuming nominal transfer amounts.
+The largest single-transaction exposure is bounded by the batch cap: 50 pieces, or 50e18 SHARD on a
+third-party swap.
 
 ## Trust boundaries
 
-List the trust boundaries the project actually uses: PoolManager, routers, factories, launchers, external protocols,
-apps or games, browsers, wallets, services, databases, oracles, keepers, signers, issuers, administrators, indexers,
-APIs, interfaces, quote providers, routing providers, and monitoring operators. Explain what each can and cannot do.
+The only external contract the system trusts is the canonical Uniswap v4 PoolManager at
+`0x000000000004444c5dc75cB358380D2e3dE08A90`. Every callback authenticates `msg.sender` against that exact
+address and reverts `NotPoolManager` otherwise.
 
-Treat the public source authority and review channel as trust boundaries too. Model repository deletion/recreation under
-the same slug, numeric-id changes, private visibility, unreachable commits, missing submodule/LFS objects, mutable refs,
-package-contract drift, a validator/skill/criteria mismatch, editable review projections, and a blank or mixed-revision
-decision. Only the exact retained source and typed immutable final-verification record may cross that boundary.
+Inside the boundary, the hook trusts its own SHARD and NFT contracts, both of which it deployed by CREATE2 at
+addresses committed to in the configuration hash. The NFT accepts inventory instructions only from the hook
+(`NotNFT` / `NotDeployer` guards), and the renderer is reached only by staticcall, which cannot write state.
 
-Treat tool output and deployment execution as separate trust boundaries. Model all scanners unavailable, empty output,
-same-run generated code/tests, stale suppressions, a valid signature over bad evidence, mutable shared artifacts,
-attestation replay, RPC disagreement, secret exposure through argv/logs/artifacts, cross-chain or cross-target
-authorization replay, signer compromise, nonce duplication, gas/value-limit bypass, partial deployment, and wrong
-runtime/configuration at an occupied predicted address. Preserve prepare, analyze, simulate, authorize, broadcast,
-verify, and activate as separate states with separate authorities.
+There is no oracle, no keeper, no bridge, no signature scheme, no offchain input and no admin key. There is
+therefore no path by which a compromised external party can move user value.
 
 ## Launch-plan integrity
 
-For launch admission, identify the bound launch-plan path and hash. Threat-model omitted or reordered targets, wrong ABI
-arguments, wrong compiler settings, unmined hook addresses, wrong PoolKey or initial price, partial initialization,
-allocation drift, missing liquidity or custody transfer, unavailable platform modules, transaction failure between
-atomicity boundaries, and false postconditions.
+The factory pins `keccak256` of the hook creation code at construction and refuses to deploy any other bytes.
+It mines the hook salt until the resulting address carries exactly the five declared permission bits and
+reverts if the mask differs. It commits the whole configuration — addresses, salts, ticks, start price,
+renderer and metadata — to a configuration hash readable after the fact as `configurationHashOf(hook)`.
 
-For mutually wired components, model a public first caller substituting a wrong interface-compatible counterpart before,
-during, and after initialization. For CREATE2, model predicted-address preoccupation, changed deployer runtime or
-authority, salt/initcode/constructor drift, retry, partial deployment, and any metamorphic-code assumption. The launch
-must reject foreign code and preserve rollback or a clean retry without moving value into a partial graph.
+An observer who sees the pending launch can front-run it and sponsor the identical launch themselves. That
+creates the same contracts with the same recipients rather than redirecting anything, because the builder and
+Programmable destinations are compile-time constants rather than launch inputs. The accepted consequence is
+that the launch sender is not guaranteed to be the intended one.
 
-Model every caller-selected payer, sponsor, `from`, Permit2 owner, or standing allowance as a separate authority. Give a
-victim an allowance, let an attacker mutate beneficiary, token, amount, launch/configuration hash, PoolKey/hook/router,
-chain, verifying contract, nonce, and deadline, and prove allowance alone cannot authorize the launch. Include direct
-caller funding, typed delegation, Permit2, ERC-1271, revocation, partial spend, residual allowance, refund, and replay.
+A second launch with the same salts and metadata reverts `AddressOccupied` and cannot alter the first.
 
 ## Custom hook boundary, only when `hook.used` is true
 
-Record all 14 permission flags, the derived mask, why each enabled callback is necessary, and the expected CREATE2
-deployment method. For each enabled callback state PoolManager authentication, intended PoolKey, callback `sender`
-meaning, hookData validation, exact selector and return shape, nested-action suppression, and revert effect.
+Five permission bits are enabled and each is load-bearing:
+
+- `beforeInitialize` is the only thing standing between the collection and a front-runner who initialises the
+  canonical pool at a wrong price. It rejects any non-canonical PoolKey and any start price other than the
+  pinned one.
+- `beforeSwap` charges the inclusive fee when ETH is the specified currency, returning a positive specified
+  delta. `beforeSwapReturnDelta` is what allows that delta to be nonzero.
+- `afterSwap` charges the fee when ETH is unspecified and its executed amount is only knowable afterwards,
+  and enforces the batch cap on the SHARD leg. `afterSwapReturnDelta` allows that deduction.
+
+`beforeSwapReturnDelta` is the highest-risk permission in v4: a hook holding it can consume a swap entirely
+and return a no-op. Shards does not do that. Its specified delta is exactly the computed fee, capped at 1% of
+the gross ETH leg, and the residual always reaches the AMM. `zeroAmmLeg` is declared `forbidden` on every
+quadrant precisely because bypassing the curve is not a behavior this design has.
+
+The hook swaps against its own pool in every user-facing entry point, and v4 skips a hook's own callbacks in
+that case. If the fee lived only in the callbacks, every one of those paths would be free. It does not: the
+same inclusive rate is applied internally by `_chargeFee` before settlement, which is what
+`selfCallPolicy: same-pool-swap-fee-enforced-internally` declares.
 
 ## Ordinary no-hook boundary, only when `hook.used` is false
 
-Identify `official-launchpad` or `model-specific-no-hook` and state that the project introduces no custom callbacks, hook
-permission mask, or hook CREATE2 address. Explain which behavior remains in the token, router, app, game, or service and
-why it does not require atomic PoolManager callback execution. Treat any separately declared contract or offchain
-authority as its own boundary rather than inventing hook controls. For a model-specific path, threat-model transfer and
-sell liveness, tax bounds and recipients, requested-versus-received amounts, automatic swaps, reentrancy, MEV, liquidity
-position custody and exit, mutable authorities, and provider incompatibility.
-
-State that this route remains proposal-only and `programmableFee.collection.status` is
-`pending-hook-integration`. Threat-model a project-specific implementation of the standard Programmable fee-hook profile
-or integration into one custom hook; a router, LP fee, transfer tax, or alternative pool is not a launch-ready substitute.
-
-For a taxed v4 token, remember that the token observes the shared PoolManager address, not a trustworthy PoolId or
-swap-versus-liquidity label. Model spoofed classifiers and the tax effect on liquidity adds, removals and alternative
-pools; never describe PoolManager ingress and egress as buy and sell without this limitation.
+Not applicable. This project uses a hook.
 
 ## Value flows and accounting
 
-Define assets, signs, settlement order, rounding, custody, fee liabilities, and conservation properties for every
-supported value-moving action. For custom swap accounting, classify all four quadrants and define specified and
-unspecified currencies; each settlement step names actor, currency, delta owner, sign, amount rule, operation, and
-deadline. Cover ERC-20/native debt, positive credit, `take`, `settleFor`, and ERC-6909 mint/burn. The current profile
-rejects `clear`; use an explicit claim/transfer/forfeiture path. When project code controls
-a PoolManager unlock or callback delta, state and test the invariant that every PoolManager delta reaches zero before the
-unlock ends. Do not attribute internal PoolManager settlement responsibility to an ordinary no-hook app that never owns
-that execution path.
+Two invariants hold outside any single unlock callback:
 
-When ERC-6909 claims are used, define currency-id derivation, owner, operator, PoolId and beneficiary liability keys,
-mint, burn, transfer, redemption, dust, and aggregate solvency.
+```text
+nft.totalSupply() + hookShardBalance / 1e18 == 10000
+hook ETH balance >= builderFeesAccrued + launcherFeesAccrued + unclaimed holder fees
+```
+
+The first is what makes a piece redeemable for exactly one unit forever. The second is what makes every
+accrued claim payable.
+
+Every path writes effects before interactions and carries `nonReentrant`. ERC-20 transfer return values are
+checked and revert `TokenTransferFailed` rather than being ignored. Hook-initiated actions revert
+`PartialFillNotSupported` instead of settling a partial fill.
+
+Sub-wei remainders are carried rather than discarded, in `feeCarryIn`, `feeCarryOut`, `operatorFeeRemainder`,
+`operatorSplitParity`, `dustScaled` and `releasedDustScaled`. `releasedDustScaled` has to be separate from
+`dustScaled`; folding them breaks the invariant that dust never exceeds circulating supply, which a test
+enforces.
 
 ## Dynamic fees and recipients
 
-For the mandatory Programmable fee, model the canonical-PoolKey binding, executed gross quote-side basis after partial
-fills, every successful supported mode, deterministic pre-movement rejection of unsupported quadrants, floor and
-non-additive split, final combined trader limits, rounding, liability solvency, event reconciliation, and
-alternative-pool/router bypass attempts. The immutable owner and sole claim authority is
-`0x4957f49620AFf3Adbbe8195a4f633E49cc93376c`; model unauthorized builder, project, administrator, recipient, rescue,
-sweep, redirect, stored-recipient mutation, owner mutation, and cross-pool-netting attempts. Preserve the owner's
-ability to claim anytime to itself or an owner-selected destination for that claim.
-Treat the accrued 10 bps as a claimable liability, not an automatic transfer. Model partial claims, repeated claims,
-failed payout destinations, liability decrement ordering, and balance reconciliation.
+The rate is not dynamic. It is the immutable constant `FEE_BPS`, and the LP fee is a separate immutable zero
+that belongs to liquidity providers and is excluded from this split.
 
-Model quadrant-dependent before/after return-delta collection and v4 callback skipping on hook-initiated PoolManager
-actions. Forbid same-pool self-swaps or specify and test equivalent internal fee accrual; do not ban unrelated safe
-custom-hook behavior.
+`operatorSplitParity` carries the odd wei to Programmable rather than the builder, so the platform share can
+never be rounded below the builder share. The builder can rotate only its own future destination, emits
+`BuilderFeeRecipientChanged` when it does, and cannot touch accrued Programmable fees, accrued holder fees,
+liquidity or inventory.
 
-Do not equate a zero core-AMM leg with a zero user output. Model a valid fully backed custom-accounting completion and an
-invalid unbacked/no-op returned delta; only the conserved, delivered, slippage-bounded final settlement may pass.
-
-When used, record initial fee, initialization, application and update paths, override rule, persistent actor and call
-sites, rate limit, immutable bounds, metric, observation, cadence, manipulation resistance, liquidity-decrease behavior,
-and failure rule. For hook-owned fees, cover collection path, value-flow id, liability keys, event, recipient share,
-address source and launch binding, rounding, duplicates, zero and failed recipients, claim and redirect authorization,
-address validation, mutation event, and historic entitlements.
-
-For token transfer taxes, separately model buy, sell and peer classification; immutable maximum; exemption boundaries;
-recipient conservation; zero, tiny and maximum amounts; PoolManager requested-versus-received behavior; actual user
-receipt; and the impossibility of hiding a sell block behind a fee or configuration path. For automatic liquidity, model
-threshold manipulation, repeated triggers, pool-transfer suppression, reentrancy, partial external execution, slippage,
-deadline, position custody, creator withdrawal, stuck balances, retry, and failure without blocking the user's underlying transfer.
+Donations bypass the split entirely and go straight to holders, because a gift to holders is not swap volume.
 
 ## Attack and failure scenarios
 
-Select scenarios from the declared capabilities. These may include unauthorized callbacks and malformed hookData for a
-custom hook; reentrancy and hostile tokens for contracts; alternate pools, partial fills, and MEV for trading paths;
-forged client actions, wallet phishing, replay, persistence divergence, and manipulated game state for apps or games;
-API abuse, stale data, reorgs, job duplication, dependency failure, denial of service, and funding exhaustion for
-services, keepers, or indexers; and bad recipients, insolvency, gas exhaustion, and other model-specific risks. Mark an
-irrelevant family not applicable with a reason instead of fabricating a control.
+| Scenario | Outcome |
+| --- | --- |
+| Foreign pool routes a fee in the wrong currency into the accumulator | Blocked by `_guardPool`; this would otherwise permanently brick `claim` for real holders |
+| Swap the pool directly to dodge the batch cap, then redeem | Blocked: the cap is measured on the SHARD leg inside `afterSwap`, so it binds any route |
+| Drain liquidity | No code path exists in any contract |
+| Reenter during a claim or refund | `nonReentrant` plus effects-before-interactions on every path |
+| Grind rarity by choosing the mint block | Possible, and disclosed. See Known limitations |
+| Partial fill after the fee was charged on the requested size | Possible for third-party swaps, and disclosed. See Known limitations |
+| PoolManager unavailable | The market is inert. Nobody can extract value and the 1:1 backing is unaffected |
 
 ## Dependency identity
 
-Give every dependency a stable id. Bind onchain dependencies to chain, address, interface, exact source revision,
-runtime expectation, upgrade authority, and trusted deployment record where available. Record offchain owner, revision,
-integrity where available, authentication, freshness, funding, fallback, and monitoring.
+One onchain dependency, identified by address and by the fact that every callback authenticates against it.
+Address identity is not source identity: this application binds the canonical mainnet PoolManager address and
+relies on Uniswap's published deployment for the source behind it.
 
 ## Product and data boundaries
 
-For every intended UI, app, game, API, service, keeper, oracle, indexer, quote, trade, claim, and monitoring surface,
-identify the source of truth, proposed model version, inputs, outputs, cache and freshness assumptions, failure states,
-owner, and recovery path.
+The indexer reconstructs state from `ShardLaunched`, `Initialised`, `FeeDistributed`, `Claimed`,
+`LauncherFeesClaimed`, `BuilderFeesClaimed` and ERC-721 `Transfer`, at a finality depth of 12 blocks, and
+verifies the result against confirmed contract reads. A divergence from the 1:1 backing invariant halts the
+indexer rather than serving inconsistent state.
 
-Cover forged or stale indexed data, event omission, reorgs, bad backfills, client/server state divergence, API cache
-divergence, quote and execution drift, malicious hookData when accepted, wrong PoolKey or router generation, partial
-fills, native refund loss, misleading transaction state, claim-preview mismatch, provider outage, routing drift, alert
-failure, and incident-response failure where they apply.
-
-Third-party discovery may locate a pool or route. It cannot prove deployment receipts, runtime identity, balances,
-entitlements, claims, or lifecycle completion. State where the product reconciles provider data against confirmed chain
-state.
-
-For measurement- or probability-driven behavior, model raw observation, estimator output, market-implied price and the
-enforced fee, limit, allocation or payout as separate trust and manipulation surfaces. Cover provenance, units, version,
-freshness, replay, correction, extreme values, front-running, post-exposure rule changes and stale or outage behavior.
-When value is staked, add collateral insolvency, dispute, cancellation, refund and terminal-unresolved state.
+Buy and redeem cannot be told apart from `Transfer` alone and must be correlated with the PoolManager `Swap`
+in the same transaction. Any consumer that skips that correlation will misreport volume.
 
 ## Authorities and recovery
 
-Map each capability to its controller, delay, mutability, user-exit impact, and historical entitlement behavior.
+Two authorities exist and neither can affect a user position:
 
-For every claimed LP lock, model a valid decoy position from the authorized depositor and prove that the contract checks
-the canonical token id plus PoolKey or PoolId identity. For every bounded oracle or history buffer, model permissionless
-minimum-spacing writes through repeated wraps, anchor eviction, reset, stale state, delayed keepers, preserved
-liabilities, and eventual recovery.
+| Authority | Power | Cannot |
+| --- | --- | --- |
+| Builder recipient | Rotate its own future 0.10% destination; claim its own accrued balance | Touch any other balance, liquidity, inventory, or block a holder from selling |
+| Programmable recipient | Claim its own accrued 0.10% balance | Anything else; the address is a compile-time constant |
 
-For cross-chain behavior, record direction, both endpoints, messenger or bridge, proxy implementation and admin,
-custody at each phase, finality, replay, reorg, cancellation, maximum pending time, executor loss, upgrade/pause effects,
-recovery, and solvency. Separate applicant contracts from any unreleased Programmable chain adapter.
+Recovery is disclosure, not intervention. There is no pause, no upgrade, no admin and no rescue. If a defect
+is found after launch it cannot be patched. That is the deliberate trade for having nobody who can withdraw
+user value, and it is the single most important thing a reviewer should weigh.
 
 ## Known limitations
 
-State what tests and design cannot guarantee, including live fee collection and unsupported lifecycle actions, assets,
-routers, swap modes, and dependency states. Keep acceptance, product integration, deployment, verification, routing, discovery, and availability
-as separate trust decisions. Do not call the model safe or audited.
+1. **Rarity is grindable.** The seed is derived from block data, recipient and a nonce at mint time. A
+   proposer who controls block contents can influence outcomes. Commit-reveal is the known fix and is
+   deferred past this version. Soft launch only.
+2. **Partial fills overcharge relative to executed size.** When ETH is the specified currency the fee is
+   charged in `beforeSwap` on the requested amount. A third-party swap that stops at its price limit pays
+   that fee against a smaller executed amount — measured at 7,655 bps on a 1 ETH request that filled
+   0.013 ETH. It cannot be corrected in `afterSwap`. The hook's own entry points are unaffected because they
+   revert rather than accept a partial fill.
+3. **111 bytes of EIP-170 margin.** Any future addition to the hook is likely to be impossible without
+   removing something else.
+4. **Irreversible by construction.** No upgrade, no pause, no recovery.

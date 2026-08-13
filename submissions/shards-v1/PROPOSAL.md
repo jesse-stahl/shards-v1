@@ -1,204 +1,187 @@
 # Shards
 
-> Authoring scaffold: replace every instruction and choice marker below with project-specific facts or an explicit
-> not-applicable reason. Do not retain the instructional prose in the completed artifact.
+A fixed 10,000-piece onchain generative ERC-721 collection, market-made by a Uniswap v4 hook against a
+permanently locked single-sided position priced in native ETH.
 
-**Submission stage:** Proposal
-**Model id:** `shards-v1`
-**Review intent:** Architecture review | Launch admission
-**Applicant state:** Concept only | Executable prototype
-**Platform capabilities required:** List exact capability ids or `none identified`
-**Package contract:** Exact package id/digest, trusted validator revision, target base, and allowed files
-**Policy provenance:** Exact skill revision, approval-criteria revision/digest, and fee-policy version
+Every piece is backed 1:1 by an ERC-20 unit held by the hook. Buying takes a piece off the curve, selling
+returns it, and the art exists only while a piece is held. Selling a piece back destroys that artwork for good.
 
-Describe the model in one concrete sentence before implementation begins.
+Nothing here is deployed. This document describes a candidate design and its evidence; it does not claim an
+audit, an approval, a registry acceptance, or a launch authorization.
 
 ## Product and architecture decision
 
-| Decision | Exact result |
-| --- | --- |
-| User and creator job | Who does what and why |
-| Observable success | Measurable product outcome; do not substitute token price or hype |
-| Economic mechanism | Source, destination, custody and terminal state of every unit of value or right |
-| Incentives and abuse | Expected behavior plus Sybil, MEV, collusion, griefing, manipulation and adverse selection |
-| State machine | Creation, funding, activation, core action, update, result, claim or exit, failure or recovery and retirement |
-| Considered architectures | Two or three viable shapes, including a simpler standard or no-custom-hook route when applicable |
-| Selected design | Smallest complete shape and why a hook is or is not required |
-| Responsibility split | Value-critical onchain enforcement, authenticated offchain computation or data, display-only logic, platform modules and providers |
-| Efficiency | Capital use, gas, latency, liquidity fragmentation, operating dependencies and review complexity |
-| Expert routing | Current slice, at most one build specialist, at most one assurance specialist and bounded handback, or `none` |
-| First vertical slice | Mechanism, protocol, minimum experience, operations and admission pieces required for one closed loop |
-| Non-goals | Speculative features deliberately excluded from this revision |
-| Safe defaults | Every automatically selected reversible technical choice |
-| Material facts | Prompt- or evidence-sourced money, custody, authority, trust, legal and terminal decisions |
-| Remaining owner decision | One exact question or `none` |
+The outcome for a collector is that they can always buy and always sell without needing a counterparty. There
+is no listing, no bid, no auction and no floor to defend. The curve is the market, it is open the moment the
+collection launches, and it cannot be withdrawn.
 
-Autopilot completes this record before implementation. Do not claim one-prompt completion while a material fact remains
-an assumption. Guided projects use the same record after confirmation. Conversation is not security evidence; exact
-behavior, source, plan and tests are.
+The decision that shapes everything else is that the market maker, the fee accounting and the NFT inventory
+are one contract rather than three. `ShardHookV1` is simultaneously the v4 hook, the ERC-721 inventory owner
+and the fee distributor. That is unusual, and it is deliberate: buying a piece is a swap, a mint and a
+three-way fee split that must all succeed or all revert. Splitting them across contracts would either
+introduce a trusted intermediary or make the operation non-atomic.
+
+The second decision is that liquidity is seeded once from fixed supply and then permanently locked. There is
+no LP, no deposit, no withdrawal and no share token. This removes an entire class of risk — there is nobody
+whose liquidity can leave — at the cost of the design being irreversible.
+
+The third decision is that there is no administrator. No proxy, no owner, no pause, no upgrade, no rescue.
+The only mutable value in the system is the builder's own fee destination, which the builder alone can
+rotate and which touches nothing else.
 
 ## Design card
 
-| Item | Confirmed design |
+| Property | Value |
 | --- | --- |
-| Outcome | What a creator launches and what traders and LPs experience |
-| Pool | Two assets, canonical PoolKey, liquidity formation, and alternative-pool behavior |
-| During a trade | Exact behavior by direction and exactness |
-| Value | Every fee, reward, recipient, custody owner, claim, and exit |
-| Creator choices | Launch-time parameters and immutable bounds |
-| Fixed platform rules | Behavior a creator cannot change |
-| Authorities | Every mutable capability and controller |
-| Dependencies | Stable ids, exact provenance, trust, failure, and fallback |
-| Failure | Revert, retry, fallback, unwind, migration, or retirement |
-| Project surfaces | Declared contracts, app, game, service, keeper, oracle, indexer, and their languages |
-| Product surfaces | Intended launch, discovery, quote, trade, claim, and monitoring paths |
-| Not used | Lifecycle actions and capabilities explicitly excluded |
-
-For every documented numeric or temporal rule, list the unit, legal minimum and maximum, constructor/initializer/setter
-enforcement sites, overflow behavior, and below/at/above boundary tests. A prose bound that code can bypass is not a
-confirmed design.
+| Supply | 10,000 ERC-721 pieces, ids 1 to 10,000, and 10,000e18 ERC-20 units, both fixed at creation |
+| Backing | 1e18 SHARD redeems for exactly one piece, permanently |
+| Quote asset | Native ETH, `currency0` |
+| Pool | One canonical PoolKey, tick spacing 60, LP fee 0 |
+| Liquidity | 3,000e18 full range plus 7,000e18 in a band from tick 22980 to 69060, both permanently locked |
+| Start price | Tick 69060, the upper bound of both ranges |
+| Fee | 1.00% inclusive on the ETH leg, split 0.80% holders / 0.10% builder / 0.10% Programmable |
+| Hook permissions | `beforeInitialize`, `beforeSwap`, `afterSwap`, `beforeSwapReturnDelta`, `afterSwapReturnDelta` (mask `0x20cc`) |
+| Batch cap | 50 pieces per action, and 50e18 SHARD per third-party swap |
+| Art | Fully onchain SVG from a pure renderer, generated per piece |
+| Mutability | None, except the builder's own fee destination |
 
 ## Why Uniswap v4 and architecture choice
 
-Explain why the project uses Uniswap v4. State `hook.used` explicitly. Here `true` means any nonzero hook address on the
-declared canonical fee pool, including a project-specific standard Programmable profile; it is mechanically the schema's
-custom-hook route even without custom product behavior. Name the profile as `standard-programmable` or
-`integrated-custom` in prose until the released schema adds a typed field.
+A v3 pool plus a periphery contract cannot express this. The fee has to be inclusive rather than additive in
+all four direction-and-exactness quadrants, which requires `beforeSwapReturnDelta` and
+`afterSwapReturnDelta`. Native ETH as `currency0` requires v4. And the atomicity of swap-plus-mint-plus-split
+requires the logic to sit inside the PoolManager unlock, not around it.
 
-- If false, select the applicable proposal route, set `programmableFee.collection.status` to
-  `pending-hook-integration`, and state that the design is not prototype- or launch-ready.
-- If true, state whether the project implements the standard Programmable fee-hook profile or integrates the fee policy
-  into its one custom hook. Bind exact source and tests; neither path is pre-reviewed by this template.
+The choice not to compose a second hook is forced: one PoolKey has one hook address. Since the collection
+needs custom behavior anyway, the mandatory Programmable fee is integrated into that same single hook rather
+than layered on top of it.
 
-Also state which behavior belongs in contracts, the app or game, and any service, keeper, oracle, or indexer. Do not move
-an offchain concern into a hook merely to fill this template.
+The cost of this choice is size. `ShardHookV1` compiles to 24,465 bytes against the EIP-170 limit of 24,576,
+leaving 111 bytes of margin. That is the binding constraint on the design and the reason several helpers are
+inlined and the renderer lives in its own contract.
 
 ## Lifecycle
 
-For creation, registration, initialization, liquidity formation, first interaction, swaps, liquidity changes, donations,
-fees or rewards, game or app actions, service jobs, claims, payout changes, dependency failure, and retirement, state the
-caller or actor, assets, state changes, recipient, event or observable result, and failure behavior. Mark unused actions
-with a reason.
+Token creation, pool initialization and liquidity formation all happen inside one atomic `launch` call on
+`ShardLaunchFactoryV1`. The factory deploys the token, mines the hook salt until the address carries exactly
+the five declared permission bits, deploys the hook and the NFT by CREATE2, seeds both locked positions and
+ends holding zero SHARD. If any step fails the entire launch reverts and no address is occupied.
+
+After that the system is autonomous. Trading, fee accrual and claims need no operator. There is no retirement
+phase because nothing can be paused, upgraded, drained or migrated.
 
 ## Executable launch plan
 
-For launch admission, bind the exact data-only launch-plan path and hash from the public applicant repository. Include
-that path in the exact Application V3 source closure and summarize its deployable targets, ABI-checked constructor and
-initializer arguments, dependency order, address locators, CREATE2
-permission mining, PoolKey and initial price, allocations, liquidity and canonical-position custody, platform capability
-ids, atomicity boundaries, failure behavior, and postconditions. Text-only post-deployment instructions are not an
-executable plan. Do not invent an unversioned central field when the released Application V3 schema can only bind the
-plan through content-addressed public source and review evidence.
+The launch is one call to `ShardLaunchFactoryV1.launch(bytes32,bytes32,bytes,LaunchParams)`. The factory
+itself is deployed through the canonical Arachnid CREATE2 proxy, so its address depends only on the salt and
+the init code and is reproducible by any sender regardless of nonce.
 
-When the resolved target contract explicitly selects Launch Graph V1, compile the plan with
-`cli.mjs launch-plan-graph compile <input.json>` and bind both schemas, exact input and deterministic output hashes. Its
-six-file or authority-extended seven-file setting is only that central submission profile. Do not add `launch.json` to
-the active Application V3 package by inference, and never describe `EXECUTABLE_CANDIDATE` as approval or launch authority.
+The whole plan is pinned in `releases/shards-v1/mainnet-manifest.json` and was reproduced from a clean clone
+on an Ethereum mainnet fork:
 
-For every mutually wired hook, token, NFT, vault, router, registrar, controller, factory, or escrow, state how both exact
-identities are fixed before value can move and how a wrong interface-compatible counterpart is rejected. For CREATE2,
-bind deployer runtime and authority, salt, initcode, constructor arguments, permission bits, predicted address,
-pre-existing-code policy, retry behavior, and the assumption that prevents foreign or metamorphic code adoption.
+```text
+factory              0x9442a520e7b31D10177C75A363355C2C29141ac5
+renderer             0x090DBD2FaB1a467f90ed82a443eFa9AAb658DE14
+SHARD                0x50d17EAaeB52c66E64b918385AbF6523fDAE57CF
+hook                 0xbA318baA8649962fD77CC7082d098f2C09Fd60cC
+NFT                  0x9fDA98dE1B7061ae02A9Aec7A6f8ed75a8Feb8F3
+hook salt            0x…52e1
+configuration hash   0xa98b7b95777267181a2b93a33632991e80a49f4a57d94150f8dfbd90421f34c1
+```
 
-State the operational boundary as `prepare -> analyze -> simulate -> authorize -> broadcast -> verify -> activate`.
-This submission may specify and simulate the launch but cannot self-authorize execution. Identify the later platform
-owner for exact-chain bundle authorization, gas-only signer isolation, limits/expiry, idempotency, secret handling,
-receipt/runtime readback, source verification, lifecycle proof, monitoring, and activation. Simulation and provenance
-attestation must not be presented as security, approval, deployment, or launchability.
+Every one of those values is valid only for this exact source revision. Any source change re-mines all of
+them. `test/ShardArtifactManifestV1.t.sol` fails the build if the published size and hash tables drift from
+what the repository actually compiles, which is how a previous drift was caught.
+
+The launch call carries no native value. Measured launch gas on a mainnet fork is 8,924,445.
 
 ## Assets, pool behavior, optional callbacks, and integration
 
-Record stable asset ids, origin, address where existing, token behavior, issuer controls, and failure effect. A project
-may have multiple assets, pools, markets, chains, apps, or services; declare each launch unit and identify which primary
-asset/canonical fee pool fits the current runtime. Define each relevant PoolKey, launch and liquidity path, router
-generation, complete supported/rejected four-quadrant matrix, partial fills, slippage, deadline, Permit2, state reads,
-and events. Missing support for the wider shape is a platform capability gate after technical integrity passes.
+`ShardTokenV1` is a fixed-supply ERC-20 with no mint, burn, pause, blocklist or transfer hook. `ShardNFTV1`
+is an ERC-721 over ids 1 to 10,000 whose `tokenURI` is generated onchain by a pure renderer reached through a
+staticcall.
 
-If `hook.used` is true, also record all 14 permission booleans, the derived mask, PoolManager authentication, callback
-sender meaning, hookData policy, return shapes, and nested-action suppression. If false, state that no custom callback,
-permission mask, or hook CREATE2 address applies and that mandatory fee integration remains changes-required.
+The pool admits exactly one PoolKey. `_beforeInitialize` rejects any other currency pair, fee or tick
+spacing, and `_guardPool` rejects any other PoolId on every swap. Alternative pools may exist and inherit
+none of this behavior.
+
+`hookData` is unused on every callback and no caller identity is decoded from it, so a quote and its
+execution traverse identical bytes.
+
+This repository ships no JavaScript swap client. `ShardSwapRouterV1` and `ShardFeeForwarderV1` are optional
+Solidity helpers that the factory does not deploy.
 
 ## Product integration plan
 
-State whether each surface is planned, not used with a reason, or blocked. A proposal defines the boundary; it does not
-claim that the product or a third-party provider implements it.
+Buy and redeem are indistinguishable from the ERC-721 `Transfer` event alone, because both move a piece out
+of the NFT contract. An indexer must correlate each `Transfer` with the PoolManager `Swap` in the same
+transaction to tell them apart.
 
-For a prototype, mirror the plan in `submission.json.integration.platformHandoff`. Contributor review stays
-`not-requested` or `pending-maintainer-review`; maintainer review remains required, self-approval remains false, and
-availability remains unclaimed.
+`claimable()` under-reports for a holder who has never interacted, and `claim()` reverts `NothingToClaim` in
+that state, so accrued fees are computed offchain from `FeeDistributed` and `Transfer` history rather than
+read directly.
 
-| Surface | Intended behavior | Source of truth | Inputs and outputs | Failure or unsupported state | Planned paths and tests |
-| --- | --- | --- | --- | --- | --- |
-| UI | Routes, actions, displayed data, disclosures, and feature gate |  |  |  |  |
-| App or game | Rules, player/user state, wallet actions, persistence, and client trust boundary |  |  |  |  |
-| API | Operations, schemas, freshness, authentication, rate limits, and errors |  |  |  |  |
-| Service, keeper, or oracle | Jobs, triggers, authority, freshness, retries, funding, fallback, and monitoring |  |  |  |  |
-| Indexer | Events, start block, finality, reorgs, backfill, reconciliation, and lag |  |  |  |  |
-| Quote | PoolKey, direction, exactness, amounts, block, Quoter, hookData when used, fees, and parity |  |  |  |  |
-| Trade | Router actions, Permit2, native value, refunds, slippage, deadlines, fills, and receipts |  |  |  |  |
-| Claim | Entitlement, liability keys, preview, authorization, payout changes, states, and recovery |  |  |  |  |
-| Monitoring | Checks, thresholds, owner, runbook, escalation, fallbacks, and drills |  |  |  |  |
-
-Name intended Hooklist, routing, discovery, or listing providers separately. Their support is not implied by protocol
-compatibility, local tests, or Programmable acceptance.
+Any product surface built on this is a separate repository and is not bound by this application.
 
 ## Fees, recipients, and settlement
 
-Start with the root `programmableFee` record. State:
+A flat 1.00% inclusive charge on the native-ETH leg of every successful swap of the canonical PoolKey. It is
+never additive: a caller who asks to spend 1 ETH spends 1 ETH.
 
-- `effective=max(selected total,10 bps)`, exactly `10 bps` to Programmable, and only the remainder to the project;
-- the worked examples `0 -> 10 bps + 0` and `3% -> 0.1% + 2.9%`, never `3.1%`;
-- every successful supported canonical-PoolKey swap, executed gross quote-side basis after partial fills, and a complete
-  four-quadrant matrix in which unsupported modes reject before value, state, liability, quote, router, or UI movement;
-- quadrant-dependent before/after return-delta paths, plus a same-pool self-call policy that forbids hook-initiated
-  same-pool swaps or proves equivalent internal fee enforcement;
-- project-specific standard-profile hook or single integrated custom hook, with no router, LP-fee, transfer-tax, or alternative-pool substitute;
-- immutable owner and sole claim authority `0x4957f49620AFf3Adbbe8195a4f633E49cc93376c`, able to claim anytime to itself or an owner-selected destination for that claim;
-- 10 bps accrued as a claimable liability, not merely auto-transferred, with `claimAvailability: anytime`;
-- no builder, project, administrator, stored mutable recipient, rescue, sweep, or redirect path; and
-- `(poolId,currency,owner)` liabilities, no cross-pool netting, value-flow id, collection event, claim event, rounding,
-  source paths, and test paths.
+| Share | Destination | Mutability |
+| --- | --- | --- |
+| 0.80% | ERC-721 holders, through a per-piece accumulator with a holder-called `claim` | Not mutable |
+| 0.10% | Builder, a compile-time constant on the factory | Rotatable by the current builder only |
+| 0.10% | Programmable, `0x4957f49620AFf3Adbbe8195a4f633E49cc93376c` | Immutable |
 
-For any caller-selected `payer`, sponsor, `from`, Permit2 owner, or allowance source, state why that actor intended this
-exact action. Default payer to the authenticated caller, or bind payer-originated typed authorization to chain,
-verifying contract, action, token, amount/max, beneficiary/recipient, complete launch/configuration hash, target PoolKey/
-hook/router, nonce, and deadline. Allowance alone is not launch intent.
+ETH is the specified currency exactly when `zeroForOne == exactIn`. That single fact determines which
+callback charges the fee, and it lands precisely on the policy's `currency0` quadrant table:
 
-Distinguish LP fees, hook-owned charges, token transfer taxes, app or game payments, and service-controlled value. Include
-only mechanisms the design uses. For dynamic LP fees, state initial value, initialization, application and update paths,
-override rule, persistent actor and call sites, rate limit, bounds, metric, unit, observation, cadence, manipulation
-resistance, and failure rule. For hook-owned value, state charged currency by supported swap quadrant, collection path,
-value-flow id, liability keys, event, recipient shares and address bindings, rounding, claims, payout changes, historic
-entitlements, and failed-recipient behavior. List custom-accounting settlement actions in order and state the conservation
-equation. For app, game, or service value, state custody, authorization, replay protection, failure, refund, and exit.
+| Quadrant | Charged in |
+| --- | --- |
+| zeroForOne exact input | `beforeSwap` |
+| zeroForOne exact output | `afterSwap` |
+| oneForZero exact input | `afterSwap` |
+| oneForZero exact output | `beforeSwap` |
 
-For a `tokenMechanics` transfer tax with either hook route, state buy, sell and peer-transfer rates in hundredths of a basis point, the
-immutable maximum, exemptions, PoolManager transfer scope, recipient destinations and shares, value-flow ids, mutability,
-authority, delay, shared-PoolManager classification, liquidity-operation and alternative-pool treatment, event, and failure rule. State explicitly that ordinary peer transfers, pool buys, and pool sells stay
-permitted and that no transaction cap, wallet cap, cooldown, allowlist, or denylist exists. For automatic liquidity,
-state the funding recipient id, safe trigger mode, pool-transfer suppression, threshold, maximum swap, slippage, deadline, execution and reentrancy rule, actual-received
-accounting, LP position custodian and transferability, exit, emergency recovery, events, and atomic failure behavior.
+Both the outer fee and the internal split carry sub-wei remainders across calls, so the total is invariant to
+how the volume is chopped up. Ten 9-wei fees accrue exactly what one 90-wei fee accrues.
 
-List routing, quote, indexer, scanner, aggregator, and listing limitations separately. Local compatibility is not provider
-approval; name the tested fallback when an external provider does not support the exact token runtime.
+Uniswap v4 skips a hook's own callbacks when the hook is the swapper, so `buyNFT`, `buyMany`, `buyMax`,
+`sellNFT`, `sellMany` and `redeem` charge the identical fee internally rather than relying on a callback that
+will not fire.
+
+Claims are pull-only and separately authorized. Each path zeroes only the caller's own accrued balance before
+transferring and is reentrancy-guarded. There is no sweep, no rescue and no netting between balances.
 
 ## Semantic examples
 
-Provide one numerical example for each fee or accounting rule the project introduces, including rounding, value
-conservation, and one failure case. Cover all four swap quadrants as supported-and-charged or unsupported-and-rejected
-before movement. The mandatory fee applies to every successful supported mode; it does not force a design to expose a
-mode that its complete hook/router/quoter/UI boundary safely rejects. For zero-core-AMM custom accounting, prove final
-positive user output, backing, conservation, exactness/slippage, deadline, and refunds.
+Buying the first 50 pieces at launch costs 0.050847 ETH including the fee, measured on a mainnet fork. Of
+that, 50,847,164,162,969 wei accrued to Programmable and the identical amount to the builder — exactly 0.1%
+each — with the remainder streamed to holders. The buyer's unspent ETH was refunded in the same transaction
+and the factory ended holding zero SHARD.
+
+A third-party swap that tries to move more than 50e18 SHARD reverts `SwapTooLarge`, measured on the SHARD leg
+so one check covers all four quadrants.
 
 ## Fact provenance
 
-Separate `builder-stated`, `agent-derived`, and `evidence-backed` facts. Do not label a design-card confirmation as
-technical evidence.
+Contract sizes and code hashes come from `forge build --sizes --skip test` and are asserted against
+`spec/shards-v1.json` and the release manifest by `test/ShardArtifactManifestV1.t.sol`. Address predictions
+come from re-running the mining path against a deployed factory. Gas figures, fee accrual and the zero
+initial liquidity figure come from an Ethereum mainnet fork replay of the exact launch call.
 
 ## Open decisions
 
-List architecture-changing questions that remain unresolved. Do not hide them in implementation notes.
+Three questions are raised for maintainer review rather than resolved here, and each is recorded in
+`submission.json` under `disclosures`:
 
-This is a public, non-confidential proposal. The skill and local checker do not prove that fees are collected live.
-Acceptance, independent review, product integration, deployment, runtime matching, lifecycle evidence, monitoring, routing,
-listing, scheduling and availability require separate evidence records.
+1. The fee remainder is one combined operator remainder with a parity carry to Programmable rather than two
+   independent remainders. Does that satisfy policy 1.1.0?
+2. There is no revert below 1,000 wei of gross quote volume. The carry preserves the entitlement instead of
+   flooring it. Is that an acceptable substitute?
+3. In-range liquidity is exactly zero at the initialization tick, because the pool deliberately opens at the
+   upper bound of both locked ranges. Which value should the launch executor verify?
+
+A fourth item is disclosed but not open: piece rarity is derived from block data at mint time and is
+grindable by a determined proposer. Commit-reveal is the known fix and is deferred past this version.

@@ -1,154 +1,142 @@
 # Evidence
 
-> Authoring scaffold: replace every instruction and empty row below with attributable evidence, a truthful pending/
-> blocked state, or an explicit not-applicable reason. Do not retain the instructional prose in the completed artifact.
-
-Use this file to record structured evidence and review notes for one exact submission revision.
-
-Every completed gate records its gate id, exact command, tool version, 40-character evidence-origin commit, artifact
-path, content hash, result, scope, and exact review-target hash. The origin commit is provenance and may precede the
-later packaging HEAD; exact intake identity comes from the committed review target and primary GitHub source binding.
+What has actually been produced, by whom, and what it does not prove.
 
 ## Authority and package provenance
 
-| Authority | Exact immutable revision, id, digest, or allowed files | Revalidation result |
-| --- | --- | --- |
-| Trusted intake workflow or service |  |  |
-| Pull-request target base |  |  |
-| Validator and package contract |  |  |
-| Builder skill and approval criteria |  |  |
-| Programmable fee policy |  |  |
-| Primary numeric repository id, commit, tree, retained bundle digest |  |  |
-| Companion numeric repository ids, commits, trees |  |  |
+| Item | Value |
+| --- | --- |
+| Source repository | `jesse-stahl/shards-v1`, public, numeric id `1329073878` |
+| Builder | `jesse-stahl`, immutable GitHub user id `155705664` |
+| Package generator | Hookbuilder `v0.5.1`, commit `547482adf6ed0ed19e9cd4d0e884abd70e143229` |
+| Submission standard | `1.6.0` |
+| Intake target | `0xprogrammable/submit-launch`, `main` |
+| License | MIT for all first-party source in `src/` |
 
-Record `PACKAGE_CONTRACT_DRIFT` when these authorities disagree. Do not convert platform release drift into an
-applicant security finding or hand-edit one package generation into another.
+Hookbuilder v0.5.1 is used deliberately rather than the newer v0.6.0, because submit-launch 1.4.0 vendors and
+pins that exact release and requires `standardVersion` to be exactly `1.6.0`.
 
-Dependency evidence uses stable ids. For an onchain dependency, record chain, address, interface, source revision,
-runtime hash, block, RPC class, and trusted deployment record when available. For an offchain dependency, record source
-revision, integrity where available, operator, authentication, freshness, funding, failure, and fallback.
-
-Separate builder statements, agent derivations, local tool results, independent review, deployment receipts, source
-verification, runtime matching, lifecycle proof, routing review, and product availability.
+This is a fresh application. The earlier request in `0xprogrammable/hookbuilder` was merged at commit
+`279dd2fc2ea8c488943ca4e60ca889cb00bab40e`, and submit-launch records no continuing entry for it.
 
 ## Tool coverage and independence
 
-| Property or scope | Tool or method | Exact command/version | Result taxonomy | Artifact/hash | Code author | Test/assertion author | Independent reproducer |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-|  |  |  | passed / failed / tooling-blocked / no-data / not-applicable-with-reason / inconclusive |  |  |  |  |
+| Tool | Version | Used for |
+| --- | --- | --- |
+| solc | 0.8.26, cancun, 1,000 runs, no via-ir | Build |
+| Foundry | forge / cast / anvil 1.7.1 | Build, test, fork replay |
+| Node | 24 | Package validation |
+| Git | 2.50.1 | Exact-object source binding |
+| slither | not installed | Static analysis — **not run** |
 
-All tools unavailable, parser failure, or empty output is not clean. Trace scanner candidates to reachability, attacker
-control, impact, and a focused reproduction. Same-run agent-generated code and tests are builder evidence, not
-independent confirmation. For intermittent failures, cluster up to the last five comparable runs by normalized signature
-and preserve the cause of every earlier attributable failure.
+Every tool above was run by the builder on the builder's own machine. None of this is independent. No
+external auditor, sandbox, or reviewer has executed any of it.
 
 ## Run-scoped manifest and attestation
 
-Record the unique run id/attempt, immutable subject path and sha256, manifest digest, source/review-target digest,
-workflow/service and revision, trigger and environment, skill/criteria/fee/package/validator/tool/ruleset/suppression
-digests, commands and outcomes, signer identity and scheme, transparency/retention reference, verification result, and
-superseded record. A valid attestation proves exact-byte provenance only; it does not prove correctness, audit,
-approval, deployment, or launchability. Shared mutable `latest` output cannot be the attested authority.
+Build outputs are pinned twice. `spec/shards-v1.json` and `releases/shards-v1/mainnet-manifest.json` publish a
+size and hash for every deployed artifact, and `test/ShardArtifactManifestV1.t.sol` rereads both files on
+every test run and compares them against `vm.getCode` / `vm.getDeployedCode`. A source change that moves one
+byte fails the suite until the tables are regenerated.
+
+That test exists because the tables did drift once: the factory grew by more than two kilobytes while the
+published figure stayed stale. The gate was added so it cannot happen silently again.
+
+Current sizes:
+
+| Contract | Runtime | Margin to EIP-170 |
+| --- | ---: | ---: |
+| `ShardHookV1` | 24,465 | 111 |
+| `ShardLaunchFactoryV1` | 20,730 | 3,846 |
+| `GeometricRendererV1` | 16,777 | 7,799 |
+| `ShardNFTV1` | 7,318 | 17,258 |
+| `ShardTokenV1` | 1,875 | 22,701 |
+
+Hook creation-code hash: `0x3fbdbc069ee5bfcb1ded77a8d4e550f1bb0692a488b6eb5d23dac090fbca0716`.
 
 ## Launch-admission self-check
 
-Apply `references/approval-criteria.md` to the exact immutable target. This table is applicant/agent evidence only and
-cannot create maintainer approval.
+Predicted verdict: **CHANGES REQUIRED**.
 
-| Gate | Result | Exact evidence or blocker | Resolution owner | Prevention cause and next action |
-| --- | --- | --- | --- | --- |
-| A1 Exact source and provenance |  |  |  |  |
-| A2 Executable implementation |  |  |  |  |
-| A3 Complete launch plan |  |  |  |  |
-| A4 v4 authentication, permissions, pool identity |  |  |  |  |
-| A5 Delta, settlement, liability conservation |  |  |  |  |
-| A6 Programmable fee |  |  |  |  |
-| A7 Custody, positions, locks, exits, administration |  |  |  |  |
-| A8 Liveness and bounded history |  |  |  |  |
-| A9 Capability-triggered security |  |  |  |  |
-| A10 Tests, analysis, evidence |  |  |  |  |
-| A11 Specification and public claims |  |  |  |  |
+Applicant-controlled items remain open, so this cannot be `PLATFORM PENDING`. The outstanding items are the
+evidence artifacts listed under Prototype evidence below, plus the four markdown-and-JSON declarations that
+review must rule on. None of these strings creates an acceptance record or a launch permit.
 
-Record the predicted verdict separately from platform gates. `PLATFORM PENDING` is permitted only when A1-A11 all pass.
-`READY FOR FINAL VERIFICATION` additionally requires the supported maintainer pre-final platform gates. The table is not
-a signed final-verification result.
+Two findings will not clear and are not defects to fix:
+
+- `BEFORE_SWAP_RETURN_DELTA_CRITICAL` — the permission is genuinely held and genuinely powerful. The
+  mitigation is that the delta is exactly the capped fee and `zeroAmmLeg` is `forbidden` everywhere.
+- `NOVEL_PROJECT_CATEGORY_REQUIRES_ARCHITECTURE_REVIEW` — category `other`. Shards is not a closed launch
+  type, and architecture review is the correct destination.
 
 ## Prototype evidence
 
-List the exact compatibility report, review-target hash, compiler and dependency closure, test runs, static-analysis
-dispositions, applicable fork block, gas and size results, permission mask, CREATE2 plan, and review layers. Mark missing,
-skipped, flaky, reverted, or unavailable methods truthfully. A missing tool blocks only when no attributable alternative
-method covers the same triggered property; never relabel its own run as passed.
+Produced and reproducible:
 
-Re-resolve the primary and companion repositories anonymously immediately before the result. Prove the same numeric
-repository ids still expose the exact commits, trees, declared blobs, submodules, and LFS objects. A familiar slug with
-a new numeric id is a new authority and invalidates the prior result.
+| Evidence | Result |
+| --- | --- |
+| Full local suite | 338 passed, 0 failed, 1 skipped, 20 suites |
+| Size gate | Every deployable artifact under EIP-170 |
+| Artifact-drift gate | Published tables match the compiled build |
+| Reproducible build from clean clone | Byte-identical hashes |
+| CI on the exact revision | `.github/workflows/programmable-evidence.yml`, run `31731109297` green |
+| Mainnet-fork factory deploy | Address matched the pinned prediction exactly |
+| Mainnet-fork mine | Salts, addresses and configuration hash matched byte for byte |
+| Mainnet-fork launch | 8,924,445 gas; factory left holding zero SHARD |
+| Mainnet-fork first 50 buy | 0.050847 ETH, 4,250,385 gas, refund correct, 0.1% each to builder and Programmable |
+| Post-launch in-range liquidity | Exactly zero at tick 69060, by design |
+
+Still missing, and not claimed:
+
+- one compiler build-info artifact (`forge build --build-info` emits 25 MB against a 2 MB per-file transport
+  cap, which is unresolved)
+- `gate-status.json` and `review-target.json`
+- a structured test-evidence artifact
+- the fee-conformance manifest, which itself needs the build-info above
+- public project and token logo resources
+- a workflow run id bound to the exact reviewed commit (see Change-impact below)
+- a structured PoolManager deployment-evidence record
 
 ## Change-impact and decision-rendering check
 
-| Changed input | Invalidated results | Rerun evidence | Current disposition |
-| --- | --- | --- | --- |
-| Source, compiler, or dependency |  |  |  |
-| Launch plan, configuration, or address derivation |  |  |  |
-| Tests, analysis, or evidence |  |  |  |
-| Proposal, threat model, specification, or public claim |  |  |  |
-| Repository identity, visibility, or retained object |  |  |  |
-| Package, validator, skill, criteria, or fee policy |  |  |  |
-| Tool, ruleset, suppression, prompt/model, workflow, manifest, or attested artifact |  |  |  |
+Two items block completion and appear to be pipeline issues rather than project issues. Both are raised for
+maintainer attention.
 
-Before handoff, render the full decision and reject it if a required PR head, repository id, commit, tree, digest,
-verdict, owner, timestamp, or reachability result is blank, placeholder, malformed, or mixed with another revision.
+**The workflow run-id fixed point.** `validateActionsRun` requires the declared run's `head_sha` and
+`head_commit.tree_id` to equal the bound commit, and `prepare-pr` binds `HEAD`. But the run id is declared
+inside `submission.json`, which is part of that commit. Push a commit, get run R; add R and you have made a
+new commit that R no longer describes. With the shipped `on: [push]` template this never converges. The
+documented fallback is that missing run evidence yields `tooling-blocked` rather than a rejection.
 
-Record the complete root `programmableFee` policy, canonical PoolKey and quote asset, selected/effective/platform/project
-rates, exact source and test paths, hook mechanism binding, the complete supported/rejected four-quadrant matrix, executed
-gross quote-side cases for supported modes, deterministic pre-movement rejection for unsupported modes, rounding,
-liability/value-flow ids, collection and claim events, and no-cross-pool-netting result. Record owner-only claim tests
-for immutable `0x4957f49620AFf3Adbbe8195a4f633E49cc93376c`, including owner-selected per-claim destinations and failed builder,
-project, administrator, recipient, rescue, sweep, redirect, and mutation attempts.
-Show that `accounting.accrualMode` is `claimable-liability`, `claimAvailability` is `anytime`, and accrual plus partial or
-full owner claims reconcile to the remaining liability and backing balance.
-Record the quote-asset-derived before/after return-delta path for each swap mode and the tested self-call policy. If
-same-pool hook-initiated swaps are fee-enforced internally, bind the exact implementation and regression test.
+**Build-info exceeds the transport cap.** A prototype with declared Solidity source must bind exactly one
+compiler build-info artifact. `forge build --build-info` produces a single 25 MB file for this project, while
+`prepare-pr` hard-caps declared source at 2 MB per file and 20 MB per repository. `out/` is also gitignored,
+so the artifact would have to be copied into the submission tree to be bound at all.
 
-For delegated funding, record the payer/authenticated actor relationship, allowance/Permit2 mode, typed domain and every
-bound field, plus victim-allowance, field-mutation, replay, ERC-1271, revocation, partial-spend, residual-allowance, refund,
-and front-running results. For custom accounting, record final combined caller limits, backing/conservation, valid zero-
-core-AMM completion, invalid unbacked/no-op deltas, operation-specific settlement, and forbidden `clear` of owed value.
-
-For a `tokenMechanics` transfer tax or automatic liquidity lifecycle with either hook route, also record the exact token source and
-constructor, direction rates and immutable maximum, recipient conservation, authority/delay result, requested-versus-
-received and actual-user-receipt cases, automatic-liquidity threshold/cap/slippage/deadline, reentrancy and failure
-atomicity, LP position identity/custody/exit, and every declared `testScenarios` result. Record provider tests and
-provider-owned confirmations separately; a canary, HTTP response, local route, or documentation page is not approval.
+Both look like they affect every prototype applicant with a non-trivial dependency graph, not only this one.
 
 ## Accepted-model integration evidence
 
-Use this section only when a maintainer acceptance record exists. Bind its path and content hash, model id, version,
-prototype commit, submission hash, review-target hash, accepted scope, and open conditions. Do not create or edit the
-acceptance record here.
-
-For UI, API, indexer, quote, trade, claim, and monitoring, record:
-
-- Owner, exact source paths, source of truth, dependencies, and accepted model version
-- Executable command or manual protocol, tool version, commit, result, artifact, and content hash
-- Covered inputs, outputs, errors, unsupported states, stale or reorg behavior, and recovery
-- Remaining blocker and next owner action
+None. No acceptance record exists, so there is no accepted model version, commit, submission hash or review
+target to integrate against. No launch bundle has been generated and no deployment has been authorized,
+signed or executed.
 
 ## Release gate ledger
 
-Track maintainer acceptance, platform implementation review, deployment authorization, deployment execution, source
-verification, runtime matching, lifecycle verification, Hooklist/routing/discovery decisions, and product availability
-separately. Each row needs its human owner, exact evidence, current state, blocker, and next action.
+| # | Gate | Owner | State |
+| --- | --- | --- | --- |
+| 1 | Source review | Maintainer | Not started |
+| 2 | Security review | Maintainer | Not started |
+| 3 | Maintainer acceptance | Maintainer | Not started |
+| 4 | Platform implementation review | Programmable | Not started |
+| 5 | Deployment authorization | Programmable | Not started |
+| 6 | Deployment execution | Programmable | Not started |
+| 7 | Source verification | Programmable | Not started |
+| 8 | Runtime matching | Programmable | Not started |
+| 9 | Lifecycle verification | Programmable | Not started |
+| 10 | Monitoring readiness | Programmable | Not started |
+| 11 | Routing, indexing and discovery | External | Not started |
+| 12 | Product activation and availability | Programmable | Not started |
 
-Contributor-owned `gate-status.json` can record prototype checks only. It cannot complete any row in this release
-ledger. A completed row points to a maintainer-owned record bound to the accepted release, relevant commits, chain and
-deployment identity where applicable, evidence hashes, reviewer, and decision time.
-
-Use `programmable-registry-integration-review`, `programmable-ui-integration-review`,
-`programmable-api-integration-review`, `programmable-indexer-integration-review`, and
-`programmable-integration-test-review` for maintainer-owned candidate review. Keep `uniswap-hook-routing-review` and,
-when applicable, `permissioned-pool-routing-allowlist` external.
-
-Do not add credentials, signing material, unpatched vulnerability details, generated build directories, or claims that a
-local check proves audit, acceptance, product integration, deployment, live fee collection, verification, routing
-approval, provider support, or production availability.
+No gate here is satisfied by a green check, a passing local run, a merged pull request or a maintainer
+comment. One gate never grants authority for the next.
