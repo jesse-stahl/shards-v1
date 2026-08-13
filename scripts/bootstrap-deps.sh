@@ -24,8 +24,17 @@ clone_at() {
     return
   fi
 
+  # Dependencies are vendored into this repository so that every reviewed file is
+  # a blob in the exact pushed tree, which the Programmable intake requires. A
+  # populated directory that is not a Git checkout is therefore the normal state
+  # rather than an error, and those vendored bytes are authoritative.
+  if [[ -d "${target}" ]] && [[ -n "$(ls -A "${target}" 2>/dev/null)" ]]; then
+    echo "${name}: using vendored source pinned at ${commit}"
+    return
+  fi
+
   if [[ -e "${target}" ]]; then
-    echo "${name}: ${target} exists but is not a Git checkout" >&2
+    echo "${name}: ${target} exists but is neither vendored source nor a Git checkout" >&2
     exit 1
   fi
 
