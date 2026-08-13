@@ -3,7 +3,6 @@
 /.vscode/
 /broadcast/
 /cache/
-/lib/
 /lcov.info
 /out/
 
@@ -13,3 +12,21 @@
 *.key
 *.pem
 *.swp
+
+# Dependencies are vendored so that every reviewed file is a blob in the exact
+# pushed tree, which the Programmable intake requires. Only what the Solidity
+# import closure actually needs is tracked; upstream audits, docs, generated
+# JavaScript, images and dependency test suites are not.
+lib/**/.git/
+lib/**/.github/
+lib/**/audits/
+lib/**/docs/
+lib/**/js-scripts/
+lib/**/node_modules/
+lib/**/test/
+lib/*/lib/
+lib/**/*.pdf
+lib/**/*.png
+lib/**/*.jpg
+lib/**/*.gif
+lib/**/*.svg

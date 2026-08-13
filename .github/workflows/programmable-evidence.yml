@@ -1,0 +1,37 @@
+name: Programmable primary Foundry evidence
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  programmable-primary-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09
+
+      # Dependencies are cloned at pinned commits rather than vendored, so lib/ is
+      # absent from a fresh checkout and every build step below depends on this.
+      - name: Bootstrap pinned dependencies
+        run: ./scripts/bootstrap-deps.sh
+
+      - name: Check formatting
+        run: forge fmt --check
+
+      # Scoped to src with --skip test: the harnesses inherit ShardHookV1 and add
+      # external entry points, so they exceed EIP-170 by construction and are never
+      # deployed. Deployable artifacts are still gated here and again in the suite.
+      - name: Build and check contract sizes
+        run: forge build --sizes --skip test
+
+      - name: Run tests
+        run: forge test
